@@ -1,3 +1,4 @@
+using Asistan.Application.Bellek;
 using Asistan.Domain.Entities;
 
 namespace Asistan.Application.Sohbet;
@@ -12,7 +13,7 @@ public interface ISohbetServisi
     Task<IReadOnlyList<Mesaj>> MesajlariGetirAsync(string oturumId, int adet = 20, CancellationToken ct = default);
 }
 
-public class SohbetServisi(ILlmIstemcisi llm, IMesajDeposu mesajlar) : ISohbetServisi
+public class SohbetServisi(ILlmIstemcisi llm, IMesajDeposu mesajlar, IHafizaServisi hafiza) : ISohbetServisi
 {
     public const string SistemPrompt = "Sen bir .NET eğitmenisin. Türkçe, kısa ve net cevap ver.";
 
@@ -24,22 +25,24 @@ public class SohbetServisi(ILlmIstemcisi llm, IMesajDeposu mesajlar) : ISohbetSe
         oturumId = string.IsNullOrWhiteSpace(oturumId) ? Guid.NewGuid().ToString("N") : oturumId;
         var temizSoru = soru.Trim();
 
-        var llmMesajlari = new List<LlmMesaj>
-        {
-            new("system", SistemPrompt),
-            new("user", temizSoru)
-        };
+        // 1) Hafızadan bağlamı kur: system (+ kullanıcı hafızaları + özet) + ham mesajlar + yeni soru
+        var baglam = await hafiza.BaglamKurAsync(kullaniciId, oturumId, temizSoru, ct);
 
-        // Önce model cevap versin. Hata olursa (LLM kapalı, kredi yok) hiçbir şey kaydedilmez,
-        // böylece veritabanında cevapsız "yetim" soru kalmaz.
-        var cevap = await llm.TamamlaAsync(llmMesajlari, ct: ct);
+        // 2) Model cevap versin. Hata olursa (LLM kapalı, kredi yok) hiçbir şey kaydedilmez,
+        //    böylece veritabanında cevapsız "yetim" soru kalmaz.
+        var cevap = await llm.TamamlaAsync(baglam, ct: ct);
 
+        // 3) Soru ve cevabı kaydet
         var simdi = DateTime.UtcNow;
         await mesajlar.KaydetAsync(
         [
             new Mesaj { OturumId = oturumId, KullaniciId = kullaniciId, Rol = "user", Icerik = temizSoru, Olusturulma = simdi },
             new Mesaj { OturumId = oturumId, KullaniciId = kullaniciId, Rol = "assistant", Icerik = cevap, Olusturulma = simdi }
         ], ct);
+
+        // 4) Özetleme ve kalıcı bilgi çıkarma (hata verse de kullanıcının cevabını etkilemez).
+        //    Aşama 9'da bu iş kuyruğa/Worker'a taşınacak.
+        await hafiza.SohbetSonrasiAsync(kullaniciId, oturumId, temizSoru, cevap, ct);
 
         return new SohbetSonucu(cevap, oturumId);
     }

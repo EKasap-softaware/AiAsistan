@@ -13,9 +13,9 @@ GET {{host}}/api/kullanicilar/1
 POST {{host}}/api/sohbet
 Content-Type: application/json
 
-{ "kullaniciId": "1", "soru": "Dependency Injection nedir?" }
+{ "kullaniciId": "1", "soru": "Merhaba, ben Emre. C# öğreniyorum." }
 
-### Aynı sohbete devam et (yukarıdaki cevapta gelen oturumId'yi yapıştır)
+### Aynı sohbete devam et (yukarıdaki cevapta gelen oturumId'yi yapıştır). Asistan önceki mesajları hatırlar.
 POST {{host}}/api/sohbet
 Content-Type: application/json
 
@@ -23,3 +23,12 @@ Content-Type: application/json
 
 ### Bir oturumun mesajlarını oku (eskiden yeniye)
 GET {{host}}/api/sohbet/BURAYA-OTURUM-ID/mesajlar?adet=20
+
+### Asistan bu kullanıcı hakkında neler hatırlıyor? (görme hakkı)
+GET {{host}}/api/hafiza/1
+
+### Tek bir hafızayı sil (listeden bir id yapıştır)
+DELETE {{host}}/api/hafiza/1/BURAYA-HAFIZA-ID
+
+### Kullanıcının TÜM hafızasını sil
+DELETE {{host}}/api/hafiza/1

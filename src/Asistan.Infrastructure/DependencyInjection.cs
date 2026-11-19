@@ -1,3 +1,4 @@
+using Asistan.Application.Bellek;
 using Asistan.Application.Kullanicilar;
 using Asistan.Application.Sohbet;
 using Asistan.Infrastructure.Llm;
@@ -24,6 +25,8 @@ public static class DependencyInjection
         services.AddSingleton<IMongoClient>(_ => new MongoClient(config["Mongo:Url"]));
         services.AddSingleton(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(config["Mongo:Database"] ?? "asistan"));
         services.AddScoped<IMesajDeposu, MongoMesajDeposu>();
+        services.AddScoped<IHafizaDeposu, MongoHafizaDeposu>();
+        services.AddScoped<IOturumOzetDeposu, MongoOturumOzetDeposu>();
         services.AddHostedService<MongoIndexServisi>();
 
         // --- LiteLLM ---

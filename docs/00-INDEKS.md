@@ -34,15 +34,16 @@ Kullanıcı ─► API ─► RabbitMQ kuyruğu ─► Worker ─► LiteLLM ─
                                           └─ PostgreSQL (kullanıcılar, abonelikler)
 ```
 
-Şu an (Aşama 7) çalışan kısım:
+Şu an (Aşama 8) çalışan kısım:
 
 ```
 Kullanıcı ─► API ─► SohbetServisi ─► LiteLLM ─► Claude        (senkron, kuyruk yok)
-                       └─► MongoDB (soru + cevap kaydedilir)
+                       ├─► MongoDB: önce hafıza, özet ve ham mesajlar okunur; sonra soru + cevap kaydedilir
+                       └─► 'hizli' model (Haiku): oturum özetleme + kalıcı bilgi çıkarma
              └────► KullaniciServisi ─► PostgreSQL
 ```
 
-Kuyruk, Worker ve hafıza **henüz yok**: Aşama 8-11'de gelecek. (MongoDB'ye sohbet kaydı Aşama 7'de eklendi.)
+Kuyruk ve Worker **henüz yok**: Aşama 9-11'de gelecek. (MongoDB'ye sohbet kaydı Aşama 7'de, hafıza Aşama 8'de eklendi.)
 
 ## Aşama durumu
 
@@ -51,11 +52,11 @@ Kuyruk, Worker ve hafıza **henüz yok**: Aşama 8-11'de gelecek. (MongoDB'ye so
 | 1 | Solution iskeleti | Bitti |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | Bitti |
 | 3 | EF Core + `/api/kullanicilar` | Bitti |
-| 4 | Unit testler | Bitti (şu an 18 test) |
+| 4 | Unit testler | Bitti (şu an 37 test) |
 | 5 | CI (GitHub Actions) | Dosya hazır, Actions sekmesinden doğrulanmalı |
 | 6 | LiteLLM + `/api/sohbet` | Bitti (Claude'dan gerçek cevap alındı) |
 | 7 | MongoDB sohbet geçmişi | Bitti (18 test, gerçek MongoDB'de doğrulandı) |
-| 8 | AI Memory | Yok |
+| 8 | AI Memory | Bitti (kısa + uzun süreli hafıza, gerçek Claude ile doğrulandı) |
 | 9 | RabbitMQ + Worker | Yok |
 | 10 | LangFlow | Yok |
 | 11 | CD + Skills + MCP | Yok |

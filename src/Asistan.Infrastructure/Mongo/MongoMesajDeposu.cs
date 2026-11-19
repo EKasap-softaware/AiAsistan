@@ -26,4 +26,19 @@ public class MongoMesajDeposu(IMongoDatabase db) : IMesajDeposu
         liste.Reverse(); // eskiden yeniye
         return liste;
     }
+
+    public async Task<int> SayAsync(string oturumId, CancellationToken ct = default)
+        => (int)await _koleksiyon.CountDocumentsAsync(m => m.OturumId == oturumId, cancellationToken: ct);
+
+    public async Task<IReadOnlyList<Mesaj>> AralikGetirAsync(string oturumId, int atla, int adet, CancellationToken ct = default)
+    {
+        if (adet <= 0) return [];
+
+        return await _koleksiyon.Find(m => m.OturumId == oturumId)
+            .SortBy(m => m.Olusturulma)
+            .ThenBy(m => m.Id)
+            .Skip(atla)
+            .Limit(adet)
+            .ToListAsync(ct);
+    }
 }

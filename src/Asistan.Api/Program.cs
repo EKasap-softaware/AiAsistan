@@ -1,3 +1,4 @@
+using Asistan.Application.Bellek;
 using Asistan.Application.Kullanicilar;
 using Asistan.Application.Sohbet;
 using Asistan.Infrastructure;
@@ -11,6 +12,10 @@ builder.Services.AddOpenApi();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IKullaniciServisi, KullaniciServisi>();
 builder.Services.AddScoped<ISohbetServisi, SohbetServisi>();
+
+// Hafıza ayarları appsettings.json > "Hafiza" bölümünden okunur (yoksa varsayılanlar).
+builder.Services.AddSingleton(builder.Configuration.GetSection("Hafiza").Get<HafizaAyarlari>() ?? new HafizaAyarlari());
+builder.Services.AddScoped<IHafizaServisi, HafizaServisi>();
 
 var app = builder.Build();
 

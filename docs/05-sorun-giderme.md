@@ -66,6 +66,15 @@ Sorun hangi halkada?
 **Çözüm:** `CamelCaseElementNameConvention` ile alanlar `oturumId` biçimine çevrildi (`MongoSinifHaritalari`). Eski biçimdeki deneme kayıtları silindi (`db.mesajlar.drop()`).
 **Ders:** Alan adı biçimini (camelCase) projenin başında seç ve kod/convention ile sabitle; sonradan değiştirirsen eski belgeler eşleşmez.
 
+### 11. Aynı adlı namespace ve sınıf (`Hafiza`)
+**Belirti:** `Hafiza` hem `Asistan.Application.Hafiza` (namespace) hem `Asistan.Domain.Entities.Hafiza` (sınıf) olunca kodda `Hafiza` yazınca hangisi kastedildiği belirsiz; sınıfa `Domain.Entities.Hafiza` diye uzun yazmak gerekti.
+**Çözüm:** Namespace `Asistan.Application.Bellek` olarak yeniden adlandırıldı.
+**Ders:** Namespace adı ile içindeki/yanındaki bir sınıf adı aynı olmasın.
+
+### 12. Testte `SetupSequence(...).Returns(delege)` derlenmiyor
+**Belirti:** `Cannot convert lambda expression to type 'Task<string>'`. Moq'un `SetupSequence`'i sadece sabit değer kabul eder, delege kabul etmez.
+**Çözüm:** Normal `Setup(...).Returns((args) => ...)` kullanıp sayaçla sırayla cevap veren ve gelen istekleri bir listeye kaydeden küçük bir yardımcı yazıldı (`HafizaServisiTests.LlmKaydet`).
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -80,6 +89,9 @@ Sorun hangi halkada?
 | `Authentication failed` (MongoDB) | Bağlantı cümlesinde `?authSource=admin` yok veya şifre `.env` ile uyuşmuyor | `Mongo:Url`'i user-secrets'ta kontrol et; kullanıcı `admin` veritabanında tanımlı |
 | `/api/sohbet` hata verir, MongoDB loglarında uyarı | MongoDB kapalı | `docker compose ps`; index servisi uyarıyı loglar ama API düşmez |
 | Mesaj geçmişi boş geliyor | Yanlış `oturumId` ya da LLM hata verdiği için kayıt yapılmadı | `oturumId`'yi cevaptan aynen al; `docker compose logs litellm` |
+| Asistan beni hatırlamıyor (hafıza boş) | Hafıza çıkarma hata verdi (örn. `hizli` modeli kredi/ad sorunu) veya model "YOK" dedi | API loglarında `Hafıza çıkarılamadı` uyarısına bak; `GET /api/hafiza/{kullaniciId}` ile içeriği kontrol et; LiteLLM'e `"model":"hizli"` ile doğrudan istek at |
+| Özet oluşmuyor | Henüz eşik aşılmadı (varsayılan 20 özetlenmemiş mesaj) | Denemek için eşiği küçült (`04-komut-rehberi.md`, "Hafıza ayarlarını geçici değiştirmek") |
+| `hizli` model hatası | `config.yaml`'daki `claude-haiku-5-5` adı hesabında yok | Model adını Anthropic dokümantasyonundan kontrol et, `docker compose restart litellm` |
 | `Address already in use` (5254) | Önceki `dotnet run` hâlâ çalışıyor | Eski pencereyi kapat veya portu kullanan işlemi bul |
 | `Database ... does not exist` / tablo yok | Migration uygulanmamış | `dotnet ef database update ...` |
 | Migration `Build failed` | Kodda derleme hatası var | Önce `dotnet build` ile düzelt |

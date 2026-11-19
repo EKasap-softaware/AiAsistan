@@ -142,7 +142,7 @@ var cevap = await servis.SorAsync(...);   // beklerken sunucu başka istekleri i
 
 | Tür | Neyi sınar | Hız | Projede |
 |---|---|---|---|
-| Unit | Tek sınıf, bağımlılıklar sahte | ms | 18 test var |
+| Unit | Tek sınıf, bağımlılıklar sahte | ms | 37 test var |
 | Integration | Gerçek DB/HTTP ile birkaç parça | sn | Yok (ileride) |
 | End-to-end | Tüm sistem | dk | Yok |
 
@@ -284,11 +284,49 @@ docs: ogrenme rehberi (docs klasoru)
 
 ---
 
-## 14. Henüz yazılmamış ama planda olanlar
+## 14. AI Memory: asistan nasıl "hatırlıyor"?
+
+**Nedir:** LLM'ler **durumsuzdur** (stateless): her istek sıfırdan başlar, önceki konuşmayı bilmez. "Hafıza" aslında **senin her istekte modele gönderdiğin metindir**. Hafıza yönetimi, sınırlı bağlam penceresine en faydalı bilgiyi en az token'la sığdırma sanatıdır.
+
+**Neden yönetmek gerekir:** (1) bağlam penceresi sınırlı; (2) gönderilen her token ücretli (200 mesajlık geçmişi her seferinde göndermek pahalı); (3) gereksiz uzun bağlam modelin dikkatini dağıtır.
+
+**Üç katman ve projedeki karşılığı:**
+
+| Katman | Ne tutar | Nerede | Prompt'a nasıl girer |
+|---|---|---|---|
+| Çalışma belleği | O anki istek | RAM | Zaten gönderilen mesaj listesi |
+| **Kısa süreli** | Bu oturumun konuşması | MongoDB `mesajlar` + `oturumOzetleri` | Özet + özetlenmemiş **ham** mesajlar |
+| **Uzun süreli** | Kullanıcı hakkında kalıcı gerçekler | MongoDB `hafizalar` | System prompt'a "Kullanıcı hakkında bildiklerin: ..." |
+
+**Kısa süreli: kayan pencere + özetleme (adım adım).** Varsayılan: pencere 10, eşik 20.
+1. Mesajlar kaydedilir. Özete girmemiş mesaj sayısı 20'yi **aşmadıkça** hiçbir şey özetlenmez, mesajların hepsi ham gider.
+2. Eşik aşılınca **en yeni 10 mesaj hariç** hepsi `hizli` modelle (Haiku, ucuz) özetlenir; özet `oturumOzetleri`'ne yazılır ve "ilk kaç mesaj özetlendi" sayısı (`ozetlenenMesajSayisi`) kaydedilir.
+3. Sonraki sorularda prompt = **özet + özetlenmemiş ham mesajlar + yeni soru**. Özetlenmiş mesajlar artık gönderilmez (token tasarrufu), ama özet olarak bilgileri yaşar.
+4. Özet bir sonraki turda **önceki özet + yeni eski mesajlar** ile yeniden yazılır (yuvarlanan özet).
+Neden "yeni 10'u ham bırak"? Son birkaç mesajdaki ayrıntı ("Peki ya Transient?" gibi atıflar) özette kaybolur; yakın geçmiş ham kalmalı.
+
+**Uzun süreli: kalıcı bilgi çıkarma.** Her sohbetten sonra `hizli` modele sorulur: *"Bu konuşmada kullanıcı hakkında gelecekte işe yarayacak kalıcı bir bilgi var mı?"* Varsa tek kısa cümle olarak `hafizalar`'a yazılır (ör. "Kullanıcının adı Emre; C# öğrenmeye yeni başladı."). Prompt'a konan bilinen hafızalar sayesinde model aynı bilgiyi tekrar yazmaz. Hafıza **kullanıcıya** bağlıdır, oturuma değil: yeni sohbette de hatırlanır; başka kullanıcıya sızmaz.
+
+**Güvenlik ve gizlilik kararları:**
+- Hafıza metni sonradan **system prompt'a** girdiği için çıktı sınırlanır: en fazla 200 karakter, satır sonları tek satıra çevrilir. Kötü niyetli biri hafızaya talimat enjekte etmeye çalışsa bile (prompt injection) etkisi yalnızca kendi hafızasıyla sınırlı kalır.
+- Kullanıcının **görme ve silme hakkı** var (`GET/DELETE /api/hafiza/...`), bu KVKK/GDPR açısından da önemlidir.
+- Silme `kullaniciId` ile birlikte filtrelenir: başkasının hafızası silinemez.
+
+**Hata dayanıklılığı:** Özetleme ve hafıza çıkarma *yardımcı* işlerdir. Başarısız olursa kullanıcının cevabı etkilenmez; hata loglanır (`SohbetSonrasiAsync` asla hata fırlatmaz). İkisi birbirinden bağımsız çalışır.
+
+**Bilinen sınırlar (bilerek basit tuttuk):**
+- Uzun süreli hafıza **anlamsal arama yapmaz**: kullanıcının en yeni 20 hafızası hep gider. Gerçek sistemlerde soruyla ilgili olanlar **embedding + vektör arama** (MongoDB Atlas Vector Search, pgvector, Qdrant) ile seçilir. Anthropic'in embedding modeli yok, o yüzden ayrı bir sağlayıcı gerekirdi.
+- Çelişen bilgi ("artık Java öğreniyorum") eskisini **güncellemez**; ikisi de durur, kullanıcı silebilir.
+- Özetleme ve çıkarma **senkron**: her soruda 1-2 ekstra ucuz model çağrısı (gecikme + maliyet). Aşama 9'da Worker'a taşınacak.
+- Aynı oturuma aynı anda iki istek gelirse özetleme yarışabilir (kuyruk bunu da çözer).
+- Özet ve hafıza kalitesi `hizli` modelin kalitesine bağlı.
+
+---
+
+## 15. Henüz yazılmamış ama planda olanlar
 
 | Konu | Neden gerekli | Aşama |
 |---|---|---|
-| **AI Memory** (geçmişi modele geri vermek dahil) | Modeller durumsuz: hafıza = her istekte gönderdiğin metin. Kısa süreli (son N mesaj + özet) ve uzun süreli (kalıcı bilgiler) | 8 |
 | **RabbitMQ + Worker** | Claude 10-60 sn sürebilir; API kuyruğa atıp hemen 202 döner, Worker işler | 9 |
 | **LangFlow** | Karmaşık AI akışlarını (RAG, agent) görsel kurmak | 10 |
 | **CD, Skills, MCP** | Otomatik yayın; Claude'a tekrarlayan işleri öğretmek; Claude'u dış araçlara bağlamak | 11 |

@@ -13,6 +13,7 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **ASP.NET Core** | .NET'in web tarafı: API ve web sitesi yapar. |
 | **async / await** | Beklerken thread'i serbest bırakan yazım biçimi. |
 | **Backoff (exponential)** | Hata sonrası 1 sn, 2 sn, 4 sn... diye artan bekleyişle yeniden deneme. |
+| **Bağlam penceresi (context window)** | Modelin tek istekte okuyabildiği en fazla token miktarı. Hafıza yönetimi bu pencereyi verimli doldurmaktır. |
 | **Binding (RabbitMQ)** | Exchange ile kuyruk arasındaki yönlendirme kuralı. |
 | **Branch** | Ana koddan ayrılmış paralel çalışma dalı. |
 | **Build** | Kodu derleyip çalıştırılabilir hale getirme. |
@@ -57,6 +58,8 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Infrastructure** | Veritabanı, HTTP, dosya gibi dış dünyayla konuşan katman. |
 | **Integration test** | Gerçek DB/HTTP ile birkaç parçayı birlikte sınayan test. |
 | **JSON** | Veriyi `{ "ad": "Emre" }` biçiminde yazan metin formatı. |
+| **Kayan pencere (sliding window)** | Modele sadece son N mesajı göndermek; eskiler özetlenir ya da unutulur. |
+| **Kısa süreli hafıza** | Bir oturumun konuşması: özet + ham son mesajlar. |
 | **LangFlow** | AI akışlarını sürükle-bırak kuran araç (Aşama 10). |
 | **LINQ** | C#'ta koleksiyon ve veritabanı sorgulama sözdizimi (`Where`, `Select`). |
 | **LiteLLM** | Birçok LLM'e tek OpenAI uyumlu kapıdan erişim sağlayan araç. |
@@ -64,6 +67,7 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Lifetime (DI)** | Singleton / Scoped / Transient: nesnenin ne kadar yaşayacağı. |
 | **MCP** | Model Context Protocol: AI'yı dış araçlara bağlayan standart (Aşama 11). |
 | **Merge** | İki branch'i birleştirmek. |
+| **Mutasyon kontrolü** | Kodu bilerek bozup testlerin bunu yakalayıp yakalamadığına bakmak. |
 | **Middleware** | İstek controller'a ulaşmadan geçtiği ara katmanlar (sıra önemli). |
 | **Migration** | Şema değişikliğini tarif eden, Git'e girebilen C# dosyası. |
 | **Mock** | Testte gerçek bağımlılığın yerine geçen sahte nesne (Moq). |
@@ -76,11 +80,13 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **ObjectId** | MongoDB'nin otomatik ürettiği 12 baytlık benzersiz `_id` türü; zamana göre artar. |
 | **ORM** | Tabloları nesne gibi kullanmayı sağlayan katman (EF Core). |
 | **Oturum (sohbet)** | Aynı konuşmaya ait mesajları birbirine bağlayan kimlik (`oturumId`). |
+| **Özetleme (summarization)** | Eski mesajları kısa bir metne dönüştürüp token tasarrufu yapmak (ucuz modelle). |
 | **OpenAPI** | API'nin makine-okur tarifi (`/openapi/v1.json`). |
 | **Port mapping** | `5432:5432`: bilgisayar portu : container portu. |
 | **PostgreSQL** | Güçlü, ilişkisel (SQL) veritabanı. |
 | **Producer** | Mesajı kuyruğa bırakan taraf (bizde API). |
 | **Prompt** | Modele gönderilen metin/talimat. |
+| **Prompt injection** | Kullanıcı/dış kaynak metninin içine modele talimat gizleyip davranışını değiştirmeye çalışmak. Hafıza gibi prompt'a giren her metin sınırlanmalı. |
 | **Pull Request (PR)** | Branch'i `main`'e birleştirme isteği; inceleme ve CI burada olur. |
 | **Queue (kuyruk)** | Mesajların sırayla beklediği yer. |
 | **RabbitMQ** | Mesaj aracısı (message broker). |
@@ -101,8 +107,10 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Token** | Modelin metni böldüğü birim; maliyet token sayısıyla ölçülür. |
 | **Transaction** | Ya hep birlikte ya hiç yazılan işlem grubu. |
 | **TTL index** | Belirli süre sonra kayıtları otomatik silen MongoDB index'i. |
+| **Upsert** | Kayıt varsa güncelle, yoksa oluştur (update + insert). |
 | **Unit test** | Tek parçayı yalıtıp sınayan hızlı test. |
 | **user-secrets** | .NET'te gizli ayarları makineye özel saklayan kasa. |
+| **Uzun süreli hafıza** | Kullanıcı hakkında oturumlar arası kalıcı bilgiler (ad, seviye, hedef). |
 | **Volume** | Container silinse de kalan kalıcı veri alanı. |
 | **Worker** | Arka planda iş işleyen uygulama (bizde RabbitMQ consumer'ı olacak). |
 | **Workflow** | GitHub Actions'ta `.github/workflows/*.yml` ile tarif edilen otomasyon. |

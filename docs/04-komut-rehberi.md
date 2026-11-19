@@ -104,6 +104,8 @@ docker compose exec mongo mongosh -u asistan -p <MONGO_PASSWORD> --authenticatio
 #   db.mesajlar.find().sort({olusturulma: -1}).limit(5)
 #   db.mesajlar.find({oturumId: "<OTURUM_ID>"}).sort({olusturulma: 1, _id: 1})
 #   db.mesajlar.getIndexes()
+#   db.hafizalar.find({kullaniciId: "1"})      # uzun süreli hafıza
+#   db.oturumOzetleri.find()                  # oturum özetleri
 #   db.mesajlar.drop()          # DİKKAT: tüm sohbet geçmişini siler
 ```
 Postgres tablo/kolon adları **büyük harfli** olduğu için çift tırnak şart (`"Kullanicilar"`).
@@ -134,9 +136,23 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
   -ContentType 'application/json' `
   -Body (@{ kullaniciId = "1"; soru = "Peki Scoped?"; oturumId = $r.oturumId } | ConvertTo-Json)
 Invoke-RestMethod "http://localhost:5254/api/sohbet/$($r.oturumId)/mesajlar"
+
+# Asistanın kullanıcı hakkında hatırladıkları (görme ve silme hakkı)
+Invoke-RestMethod http://localhost:5254/api/hafiza/1
+Invoke-RestMethod -Method Delete http://localhost:5254/api/hafiza/1/<HAFIZA_ID>   # tek hafızayı sil
+Invoke-RestMethod -Method Delete http://localhost:5254/api/hafiza/1               # kullanıcının TÜM hafızasını sil
 ```
 
 Daha kolayı: API çalışırken `http://localhost:5254/scalar/v1` adresini tarayıcıda aç.
+
+### Hafıza ayarlarını geçici değiştirmek (özetlemeyi hızlı görmek için)
+Normalde özetleme 20 mesajdan sonra başlar. Denemek için eşiği ortam değişkeniyle küçültebilirsin (sadece o terminal oturumunda geçerli, dosyaya yazılmaz):
+```powershell
+$env:Hafiza__PencereBoyutu = "2"
+$env:Hafiza__OzetEsigi = "4"
+dotnet run --project src/Asistan.Api --launch-profile http
+```
+`__` (çift alt çizgi) = `appsettings.json`'daki `Hafiza:PencereBoyutu`. Bitince aynı terminalde `Remove-Item Env:Hafiza__PencereBoyutu, Env:Hafiza__OzetEsigi` yap. Her soruda ekstra ucuz model çağrıları olduğu için deneme birkaç kuruş tutar.
 
 ### LiteLLM'e doğrudan istek (API'yi atlayarak, sorun ayıklamak için)
 ```powershell
@@ -183,7 +199,7 @@ git diff --staged   # eklenen satırlarda şifre/anahtar var mı?
 ```powershell
 docker compose ps                                  # 4 servis Up (3'ü healthy)
 dotnet build                                       # 0 hata, 0 uyarı
-dotnet test                                        # 18 test geçti
+dotnet test                                        # 37 test geçti
 Invoke-RestMethod http://localhost:5254/openapi/v1.json   # API çalışıyorsa JSON döner
 ```
 

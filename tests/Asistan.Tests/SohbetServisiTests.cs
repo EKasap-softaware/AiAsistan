@@ -1,3 +1,4 @@
+using Asistan.Application.Bellek;
 using Asistan.Application.Sohbet;
 using Asistan.Domain.Entities;
 using FluentAssertions;
@@ -9,9 +10,18 @@ public class SohbetServisiTests
 {
     private readonly Mock<ILlmIstemcisi> _llm = new();
     private readonly Mock<IMesajDeposu> _depo = new();
+    private readonly Mock<IHafizaServisi> _hafiza = new();
     private readonly SohbetServisi _servis;
 
-    public SohbetServisiTests() => _servis = new SohbetServisi(_llm.Object, _depo.Object);
+    public SohbetServisiTests()
+    {
+        _servis = new SohbetServisi(_llm.Object, _depo.Object, _hafiza.Object);
+
+        // Varsayılan: hafıza servisi sadece [system, user] bağlamı kurar.
+        _hafiza.Setup(h => h.BaglamKurAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync((string _, string _, string soru, CancellationToken _) =>
+                   new List<LlmMesaj> { new("system", "SISTEM"), new("user", soru) });
+    }
 
     private void LlmCevapVerir(string cevap)
         => _llm.Setup(x => x.TamamlaAsync(It.IsAny<IEnumerable<LlmMesaj>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -20,13 +30,14 @@ public class SohbetServisiTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task SorAsync_BosSoru_HataFirlatirLlmCagrilmazKaydedilmez(string soru)
+    public async Task SorAsync_BosSoru_HataFirlatirHicbirYanEtkiOlmaz(string soru)
     {
         var islem = () => _servis.SorAsync("kullanici-1", soru);
 
         await islem.Should().ThrowAsync<ArgumentException>();
         _llm.Verify(x => x.TamamlaAsync(It.IsAny<IEnumerable<LlmMesaj>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _depo.Verify(d => d.KaydetAsync(It.IsAny<IEnumerable<Mesaj>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _hafiza.Verify(h => h.BaglamKurAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -40,19 +51,19 @@ public class SohbetServisiTests
     }
 
     [Fact]
-    public async Task SorAsync_GecerliSoru_SistemPromptuVeSoruyuSirayladaGonderir()
+    public async Task SorAsync_BaglaminiHafizaServisindenAlirVeAynenModeleGonderir()
     {
+        var baglam = new List<LlmMesaj> { new("system", "OZEL SISTEM"), new("user", "eski"), new("assistant", "eski cevap"), new("user", "DI nedir?") };
+        _hafiza.Setup(h => h.BaglamKurAsync("kullanici-1", "oturum-A", "DI nedir?", It.IsAny<CancellationToken>()))
+               .ReturnsAsync(baglam);
         List<LlmMesaj>? gonderilen = null;
         _llm.Setup(x => x.TamamlaAsync(It.IsAny<IEnumerable<LlmMesaj>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<IEnumerable<LlmMesaj>, string, CancellationToken>((m, _, _) => gonderilen = m.ToList())
             .ReturnsAsync("ok");
 
-        await _servis.SorAsync("kullanici-1", "  DI nedir?  ");
+        await _servis.SorAsync("kullanici-1", "  DI nedir?  ", "oturum-A");   // soru kırpılarak hafızaya verilir
 
-        gonderilen.Should().NotBeNull();
-        gonderilen!.Should().HaveCount(2);
-        gonderilen[0].Should().Be(new LlmMesaj("system", SohbetServisi.SistemPrompt));
-        gonderilen[1].Should().Be(new LlmMesaj("user", "DI nedir?"));
+        gonderilen.Should().Equal(baglam);
     }
 
     [Fact]
@@ -75,6 +86,22 @@ public class SohbetServisiTests
     }
 
     [Fact]
+    public async Task SorAsync_Basarili_MesajlariKaydettiktenSonraSohbetSonrasiniCalistirir()
+    {
+        LlmCevapVerir("Cevap");
+        var sira = new List<string>();
+        _depo.Setup(d => d.KaydetAsync(It.IsAny<IEnumerable<Mesaj>>(), It.IsAny<CancellationToken>()))
+             .Callback(() => sira.Add("kaydet")).Returns(Task.CompletedTask);
+        _hafiza.Setup(h => h.SohbetSonrasiAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+               .Callback(() => sira.Add("sohbetSonrasi")).Returns(Task.CompletedTask);
+
+        await _servis.SorAsync("kullanici-1", "Soru", "oturum-A");
+
+        sira.Should().Equal("kaydet", "sohbetSonrasi");
+        _hafiza.Verify(h => h.SohbetSonrasiAsync("kullanici-1", "oturum-A", "Soru", "Cevap", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task SorAsync_OturumIdVerilmezse_YeniOturumIdUretir()
     {
         LlmCevapVerir("Cevap");
@@ -87,7 +114,7 @@ public class SohbetServisiTests
     }
 
     [Fact]
-    public async Task SorAsync_LlmHataVerirse_HicbirSeyKaydedilmez()
+    public async Task SorAsync_LlmHataVerirse_HicbirSeyKaydedilmezVeHafizaCalismaz()
     {
         _llm.Setup(x => x.TamamlaAsync(It.IsAny<IEnumerable<LlmMesaj>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("LLM kapalı"));
@@ -96,6 +123,7 @@ public class SohbetServisiTests
 
         await islem.Should().ThrowAsync<HttpRequestException>();
         _depo.Verify(d => d.KaydetAsync(It.IsAny<IEnumerable<Mesaj>>(), It.IsAny<CancellationToken>()), Times.Never);
+        _hafiza.Verify(h => h.SohbetSonrasiAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
