@@ -1,25 +1,54 @@
+using Asistan.Domain.Entities;
+
 namespace Asistan.Application.Sohbet;
+
+public record SohbetSonucu(string Cevap, string OturumId);
 
 public interface ISohbetServisi
 {
-    Task<string> SorAsync(string kullaniciId, string soru, CancellationToken ct = default);
+    // oturumId verilmezse yeni bir sohbet başlar ve sonuçta yeni OturumId döner.
+    Task<SohbetSonucu> SorAsync(string kullaniciId, string soru, string? oturumId = null, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Mesaj>> MesajlariGetirAsync(string oturumId, int adet = 20, CancellationToken ct = default);
 }
 
-public class SohbetServisi(ILlmIstemcisi llm) : ISohbetServisi
+public class SohbetServisi(ILlmIstemcisi llm, IMesajDeposu mesajlar) : ISohbetServisi
 {
     public const string SistemPrompt = "Sen bir .NET eğitmenisin. Türkçe, kısa ve net cevap ver.";
 
-    public async Task<string> SorAsync(string kullaniciId, string soru, CancellationToken ct = default)
+    public async Task<SohbetSonucu> SorAsync(string kullaniciId, string soru, string? oturumId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(soru))
             throw new ArgumentException("Soru boş olamaz.", nameof(soru));
 
-        var mesajlar = new List<LlmMesaj>
+        oturumId = string.IsNullOrWhiteSpace(oturumId) ? Guid.NewGuid().ToString("N") : oturumId;
+        var temizSoru = soru.Trim();
+
+        var llmMesajlari = new List<LlmMesaj>
         {
             new("system", SistemPrompt),
-            new("user", soru.Trim())
+            new("user", temizSoru)
         };
 
-        return await llm.TamamlaAsync(mesajlar, ct: ct);
+        // Önce model cevap versin. Hata olursa (LLM kapalı, kredi yok) hiçbir şey kaydedilmez,
+        // böylece veritabanında cevapsız "yetim" soru kalmaz.
+        var cevap = await llm.TamamlaAsync(llmMesajlari, ct: ct);
+
+        var simdi = DateTime.UtcNow;
+        await mesajlar.KaydetAsync(
+        [
+            new Mesaj { OturumId = oturumId, KullaniciId = kullaniciId, Rol = "user", Icerik = temizSoru, Olusturulma = simdi },
+            new Mesaj { OturumId = oturumId, KullaniciId = kullaniciId, Rol = "assistant", Icerik = cevap, Olusturulma = simdi }
+        ], ct);
+
+        return new SohbetSonucu(cevap, oturumId);
+    }
+
+    public async Task<IReadOnlyList<Mesaj>> MesajlariGetirAsync(string oturumId, int adet = 20, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(oturumId))
+            throw new ArgumentException("Oturum id boş olamaz.", nameof(oturumId));
+
+        return await mesajlar.SonMesajlarAsync(oturumId, Math.Clamp(adet, 1, 100), ct);
     }
 }

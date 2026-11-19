@@ -123,6 +123,9 @@ Abonelik sınıfı: `Id`, `Plan`, `KullaniciId` (foreign key), `Kullanici` (navi
 
 > Şu an Abonelik için hiç endpoint yok; tablo hazır ama doldurulmuyor.
 
+### `Entities/Mesaj.cs`
+Sohbet mesajı: `Id` (string; MongoDB'de ObjectId), `OturumId`, `KullaniciId`, `Rol` (`user` / `assistant`), `Icerik`, `Olusturulma` (UTC). MongoDB'deki `mesajlar` koleksiyonunun bir belgesi. Domain MongoDB'yi tanımaz: `Id`'nin ObjectId olması Infrastructure'daki `MongoSinifHaritalari`'nda ayarlanır.
+
 ---
 
 ## `src/Asistan.Application` (iş kuralları ve sözleşmeler)
@@ -140,9 +143,14 @@ Bu dosyada üç şey var:
 - `LlmMesaj(Rol, Icerik)`: modele giden bir mesaj. `Rol`: `system` (modelin kuralları), `user` (kullanıcı), `assistant` (modelin önceki cevabı).
 - `ILlmIstemcisi`: "modele sor" arayüzü. Claude'u, LiteLLM'i, HTTP'yi bilmez.
 
+### `Sohbet/IMesajDeposu.cs`
+Arayüz: `KaydetAsync(mesajlar)` ve `SonMesajlarAsync(oturumId, adet)` (eskiden yeniye). MongoDB'yi bilmez; gerçek hali `MongoMesajDeposu`.
+
 ### `Sohbet/SohbetServisi.cs`
-`ISohbetServisi` + `SohbetServisi`: boş soruyu reddeder, sistem prompt'u (`"Sen bir .NET eğitmenisin..."`) ile soruyu modele gönderir, cevabı döner.
-> `kullaniciId` parametresi alınıyor ama **henüz kullanılmıyor**: Aşama 7-8'de geçmiş ve hafıza için gerekecek.
+`SohbetSonucu(Cevap, OturumId)` + `ISohbetServisi` + `SohbetServisi`:
+- **`SorAsync(kullaniciId, soru, oturumId?)`:** boş soruyu reddeder; `oturumId` verilmediyse yeni bir tane üretir; sistem prompt'u + soruyu modele gönderir; **model cevap verdikten sonra** soru ve cevabı `IMesajDeposu` ile kaydeder. LLM hata verirse hiçbir şey kaydedilmez (cevapsız "yetim" soru kalmaz).
+- **`MesajlariGetirAsync(oturumId, adet)`:** oturumun son mesajlarını döner (adet 1-100 arasına sıkıştırılır).
+> Modele **geçmiş mesajlar henüz gönderilmiyor**: her soru modele sıfırdan gider. Geçmişi prompt'a katmak Aşama 8'in (AI Memory) işi.
 
 ---
 
@@ -164,6 +172,14 @@ Veritabanının C# karşılığı. `DbSet<Kullanici>` ve `DbSet<Abonelik>` tablo
 - `..._IlkSema.Designer.cs`: EF'in iç bilgisi.
 - `AppDbContextModelSnapshot.cs`: şemanın son hali; bir sonraki migration farkı buradan hesaplar.
 
+### `Mongo/MongoMesajDeposu.cs`
+`IMesajDeposu`'nun MongoDB ile gerçek hali. `KaydetAsync` = `InsertManyAsync` (soru + cevap tek çağrıda). `SonMesajlarAsync` = oturuma göre filtrele, `olusturulma` ve `_id`'ye göre ters sırala, `Limit(adet)`, sonra listeyi ters çevir (eskiden yeniye). İkinci sıralama anahtarı `_id`, çünkü soru ve cevap aynı milisaniyede yazılabilir.
+
+### `Mongo/MongoAyarlari.cs`
+İki sınıf:
+- `MongoSinifHaritalari.Kaydet()`: `Mesaj.Id` string'ini MongoDB'de **ObjectId** olarak saklar, alan adlarını **camelCase** yapar (`OturumId` → `oturumId`). Uygulama başında bir kez çalışır.
+- `MongoIndexServisi` (`IHostedService`): uygulama açılırken `mesajlar` koleksiyonuna `{ oturumId: 1, olusturulma: -1 }` index'ini kurar. MongoDB kapalıysa uygulamayı düşürmez, sadece uyarı loglar.
+
 ### `Llm/LiteLlmIstemcisi.cs`
 `ILlmIstemcisi`'nin gerçek hali. `POST /v1/chat/completions` ile LiteLLM'e konuşur (OpenAI formatı). Cevabın `choices[0].message.content` alanını okur. Hata kodu gelirse `EnsureSuccessStatusCode` ile `HttpRequestException` fırlatır.
 
@@ -171,9 +187,10 @@ Veritabanının C# karşılığı. `DbSet<Kullanici>` ve `DbSet<Abonelik>` tablo
 **Tüm kayıtlar tek yerde** (`AddInfrastructure`):
 - `AddDbContext<AppDbContext>` → Postgres bağlantısı (`ConnectionStrings:Sql`).
 - `AddScoped<IKullaniciDeposu, KullaniciDeposu>`.
+- `AddSingleton<IMongoClient>` (bağlantı havuzu tutar, o yüzden Singleton) + `IMongoDatabase` (veritabanı adı `Mongo:Database`, varsayılan `asistan`) + `AddScoped<IMesajDeposu, MongoMesajDeposu>` + `AddHostedService<MongoIndexServisi>`.
 - `AddHttpClient<ILlmIstemcisi, LiteLlmIstemcisi>` → adres `LiteLlm:BaseUrl`, anahtar `LiteLlm:Key`, zaman aşımı 120 sn.
 
-Paketler: `Microsoft.EntityFrameworkCore`, `Npgsql.EntityFrameworkCore.PostgreSQL` (Postgres sürücüsü), `Microsoft.Extensions.Http` (`AddHttpClient` için).
+Paketler: `Microsoft.EntityFrameworkCore`, `Npgsql.EntityFrameworkCore.PostgreSQL` (Postgres sürücüsü), `Microsoft.Extensions.Http` (`AddHttpClient` için), `MongoDB.Driver` (MongoDB sürücüsü), `Microsoft.Extensions.Hosting.Abstractions` (`IHostedService` için).
 
 ---
 
@@ -190,12 +207,13 @@ Uygulamanın giriş noktası. İki aşama:
 Hataları HTTP koduna çevirir: `ArgumentException` → 400, `EmailZatenVarException` → 409.
 
 ### `Controllers/SohbetController.cs`
-- `POST /api/sohbet` → gövde `{ "kullaniciId": "...", "soru": "..." }` → `{ "cevap": "..." }`.
+- `POST /api/sohbet` → gövde `{ "kullaniciId": "...", "soru": "...", "oturumId": "..." }` (`oturumId` isteğe bağlı) → `{ "cevap": "...", "oturumId": "..." }`. `oturumId` verilmezse yeni sohbet başlar; sonraki soruda aynı `oturumId`'yi geri gönderirsen aynı sohbete eklenir.
+- `GET /api/sohbet/{oturumId}/mesajlar?adet=20` → oturumun son mesajları (`rol`, `icerik`, `olusturulma`), eskiden yeniye.
 - Boş soru → 400. LiteLLM'e ulaşılamazsa → **502 Bad Gateway**.
 - Şu an **senkron** (cevap gelene kadar bekler). Aşama 9'da kuyruğa taşınıp 202 dönecek.
 
 ### `appsettings.json`
-Gizli olmayan ayarlar: log seviyesi ve `LiteLlm:BaseUrl = http://localhost:4000`.
+Gizli olmayan ayarlar: log seviyesi, `Mongo:Database = asistan` ve `LiteLlm:BaseUrl = http://localhost:4000`.
 
 ### `appsettings.Development.json`
 Sadece geliştirmede geçerli ayarlar (şimdilik sadece log seviyesi).
@@ -210,8 +228,9 @@ Visual Studio'da tek tıkla çalışan örnek istekler.
 Paketler: `Microsoft.AspNetCore.OpenApi`, `Microsoft.EntityFrameworkCore.Design` (migration aracı için), `Scalar.AspNetCore` (**2.12.\*** sürümü; yenisi .NET 9 ile uyumsuz). `UserSecretsId` = bu projenin user-secrets kasasının kimliği.
 
 ### Gizli ayarlar (Git'te yok): `user-secrets`
-Makineye özel kasada duran iki değer:
+Makineye özel kasada duran üç değer:
 - `ConnectionStrings:Sql` → Postgres bağlantı cümlesi.
+- `Mongo:Url` → MongoDB bağlantı cümlesi (kullanıcı/şifre içerir; `?authSource=admin` sonu önemli, çünkü kullanıcı `admin` veritabanında tanımlı).
 - `LiteLlm:Key` → LiteLLM'e girmek için anahtar (`.env`'deki `LITELLM_MASTER_KEY` ile aynı olmalı).
 
 ---
@@ -229,8 +248,8 @@ Makineye özel kasada duran iki değer:
 ### `KullaniciServisiTests.cs` (9 test sayılır)
 Geçerli kayıt; e-posta küçük harfe çevirme; e-posta zaten var; geçersiz giriş (4 farklı girdi, `[Theory]`); kullanıcı var/yok.
 
-### `SohbetServisiTests.cs` (4 test sayılır)
-Boş soru (2 girdi) → LLM hiç çağrılmaz; geçerli soru → modelin cevabı döner; mesajlar doğru sırada gider (önce `system`, sonra `user`, soru kırpılmış).
+### `SohbetServisiTests.cs` (9 test sayılır)
+Boş soru (2 girdi): LLM çağrılmaz, kayıt yapılmaz; modelin cevabı döner; mesajlar doğru sırada gider; başarılı soru-cevap **aynı oturuma** kaydedilir; oturum verilmezse her seferinde yeni id üretilir; LLM hata verirse **hiçbir şey kaydedilmez**; `MesajlariGetirAsync` adedi 100'e sıkıştırır; boş oturum id hata verir.
 
 ### `Asistan.Tests.csproj`
 Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **7.\*** (okunaklı doğrulama; 8. sürüm ticari), `coverlet.collector` (kod kapsama), `Microsoft.NET.Test.Sdk`.
@@ -242,7 +261,7 @@ Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **
 | Servis | Image | Port | Volume | Ne için |
 |---|---|---|---|---|
 | `postgres` | `postgres:17` | 5432 | `postgres_data` | Kullanıcılar, abonelikler. Veritabanı adı: `asistan` |
-| `mongo` | `mongo:8` | 27017 | `mongo_data` | Sohbet geçmişi, hafıza (Aşama 7'den itibaren) |
+| `mongo` | `mongo:8` | 27017 | `mongo_data` | Sohbet geçmişi (kullanılıyor, Aşama 7), ileride hafıza |
 | `rabbitmq` | `rabbitmq:4-management` | 5672 (uygulama), 15672 (panel) | `rabbitmq_data` | Kuyruk (Aşama 9'dan itibaren) |
 | `litellm` | `ghcr.io/berriai/litellm:main-stable` | 4000 | `config.yaml` (salt-okunur) | Claude'a tek kapı |
 

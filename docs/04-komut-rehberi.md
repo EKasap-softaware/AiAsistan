@@ -97,7 +97,14 @@ docker compose exec postgres psql -U asistan -d asistan -c 'select "Id","Ad","Em
 docker compose exec postgres psql -U asistan -d asistan -c '\dt'
 
 # Mongo'ya gir (şifreyi .env'deki MONGO_PASSWORD'den al)
-docker compose exec mongo mongosh -u asistan -p <MONGO_PASSWORD>
+docker compose exec mongo mongosh -u asistan -p <MONGO_PASSWORD> --authenticationDatabase admin asistan
+
+# mongosh içinde (alan adları camelCase ve büyük/küçük harf duyarlı!):
+#   db.mesajlar.countDocuments({})
+#   db.mesajlar.find().sort({olusturulma: -1}).limit(5)
+#   db.mesajlar.find({oturumId: "<OTURUM_ID>"}).sort({olusturulma: 1, _id: 1})
+#   db.mesajlar.getIndexes()
+#   db.mesajlar.drop()          # DİKKAT: tüm sohbet geçmişini siler
 ```
 Postgres tablo/kolon adları **büyük harfli** olduğu için çift tırnak şart (`"Kullanicilar"`).
 
@@ -116,10 +123,17 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/kullanicilar `
 # Kullanıcıyı getir
 Invoke-RestMethod http://localhost:5254/api/kullanicilar/1
 
-# Claude'a sor (LiteLLM + kredi gerekir)
-Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
+# Claude'a sor (LiteLLM + kredi gerekir). Cevapta oturumId gelir.
+$r = Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
   -ContentType 'application/json' `
   -Body '{"kullaniciId":"1","soru":"DI nedir?"}'
+$r.cevap
+
+# Aynı sohbete devam et (oturumId'yi geri gönder) ve geçmişi oku
+Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
+  -ContentType 'application/json' `
+  -Body (@{ kullaniciId = "1"; soru = "Peki Scoped?"; oturumId = $r.oturumId } | ConvertTo-Json)
+Invoke-RestMethod "http://localhost:5254/api/sohbet/$($r.oturumId)/mesajlar"
 ```
 
 Daha kolayı: API çalışırken `http://localhost:5254/scalar/v1` adresini tarayıcıda aç.
@@ -169,7 +183,7 @@ git diff --staged   # eklenen satırlarda şifre/anahtar var mı?
 ```powershell
 docker compose ps                                  # 4 servis Up (3'ü healthy)
 dotnet build                                       # 0 hata, 0 uyarı
-dotnet test                                        # 13 test geçti
+dotnet test                                        # 18 test geçti
 Invoke-RestMethod http://localhost:5254/openapi/v1.json   # API çalışıyorsa JSON döner
 ```
 

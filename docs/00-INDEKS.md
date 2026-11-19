@@ -34,14 +34,15 @@ Kullanıcı ─► API ─► RabbitMQ kuyruğu ─► Worker ─► LiteLLM ─
                                           └─ PostgreSQL (kullanıcılar, abonelikler)
 ```
 
-Şu an (Aşama 6) çalışan kısım:
+Şu an (Aşama 7) çalışan kısım:
 
 ```
 Kullanıcı ─► API ─► SohbetServisi ─► LiteLLM ─► Claude        (senkron, kuyruk yok)
+                       └─► MongoDB (soru + cevap kaydedilir)
              └────► KullaniciServisi ─► PostgreSQL
 ```
 
-Kuyruk, Worker, MongoDB ve hafıza **henüz yok**: Aşama 7-11'de gelecek.
+Kuyruk, Worker ve hafıza **henüz yok**: Aşama 8-11'de gelecek. (MongoDB'ye sohbet kaydı Aşama 7'de eklendi.)
 
 ## Aşama durumu
 
@@ -50,10 +51,10 @@ Kuyruk, Worker, MongoDB ve hafıza **henüz yok**: Aşama 7-11'de gelecek.
 | 1 | Solution iskeleti | Bitti |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | Bitti |
 | 3 | EF Core + `/api/kullanicilar` | Bitti |
-| 4 | Unit testler | Bitti (13 test) |
+| 4 | Unit testler | Bitti (şu an 18 test) |
 | 5 | CI (GitHub Actions) | Dosya hazır, Actions sekmesinden doğrulanmalı |
 | 6 | LiteLLM + `/api/sohbet` | Bitti (Claude'dan gerçek cevap alındı) |
-| 7 | MongoDB sohbet geçmişi | Yok |
+| 7 | MongoDB sohbet geçmişi | Bitti (18 test, gerçek MongoDB'de doğrulandı) |
 | 8 | AI Memory | Yok |
 | 9 | RabbitMQ + Worker | Yok |
 | 10 | LangFlow | Yok |

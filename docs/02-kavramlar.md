@@ -142,7 +142,7 @@ var cevap = await servis.SorAsync(...);   // beklerken sunucu başka istekleri i
 
 | Tür | Neyi sınar | Hız | Projede |
 |---|---|---|---|
-| Unit | Tek sınıf, bağımlılıklar sahte | ms | 13 test var |
+| Unit | Tek sınıf, bağımlılıklar sahte | ms | 18 test var |
 | Integration | Gerçek DB/HTTP ile birkaç parça | sn | Yok (ileride) |
 | End-to-end | Tüm sistem | dk | Yok |
 
@@ -189,7 +189,16 @@ var cevap = await servis.SorAsync(...);   // beklerken sunucu başka istekleri i
 | Veri şekli | Tablo, satır, sabit şema | Koleksiyon, belge (JSON benzeri), esnek şema |
 | İlişkiler | Güçlü (JOIN, foreign key) | Gömme (embed) veya referans |
 | İyi olduğu veri | Kullanıcı, ödeme, abonelik | Sohbet, log, hafıza, katalog |
-| Projede | **Kullanılıyor** (Aşama 3) | Henüz yok (Aşama 7) |
+| Projede | **Kullanılıyor** (Aşama 3) | **Kullanılıyor** (Aşama 7: sohbet geçmişi) |
+
+**MongoDB'yi bu projede nasıl kullanıyoruz:**
+- Koleksiyon: `mesajlar`. Her soru ve her cevap **ayrı bir belge** (bir sohbetin mesajı sınırsız büyüyebilir, o yüzden tek belgeye gömmedik).
+- Aynı sohbetin mesajlarını `oturumId` alanı birbirine bağlar (SQL'deki foreign key'in gevşek karşılığı).
+- `_id`: MongoDB'nin ürettiği `ObjectId`. Zamana göre artar, bu yüzden sıralamada ikinci anahtar olarak da kullandık.
+- Alan adları **camelCase** (`oturumId`). MongoDB alan adlarında **büyük/küçük harf duyarlıdır**: `oturumId` ile `OturumId` farklı alanlardır.
+- **Index** `{ oturumId: 1, olusturulma: -1 }`: "şu oturumun son mesajları" sorgusunu hızlandırır. Index olmasa MongoDB her sorguda tüm koleksiyonu tarardı. Uygulama açılırken `MongoIndexServisi` kurar.
+- **Class map:** `Mesaj` sınıfına MongoDB'ye özel attribute koymak Domain'i MongoDB'ye bağlardı. Bunun yerine Infrastructure'da "Id string'i ObjectId olarak sakla, alanları camelCase yap" kuralını koyduk. Clean Architecture'ın küçük bir örneği.
+- **Hata durumu:** Soru-cevap, model cevap verdikten **sonra** kaydedilir. LLM hata verirse hiçbir şey yazılmaz (cevapsız soru kalmaz). Dezavantaj: model cevap verip kayıt başarısız olursa kullanıcı cevabı alır ama geçmişte iz kalmaz. Gerçek hayatta bunu kuyruk ve yeniden deneme ile çözeriz (Aşama 9). `InsertMany` iki belgeyi tek istekte yazar ama **transaction değildir**.
 
 **Embed mi referans mı:** Birlikte okunan ve sınırlı veriyi iç içe koy. Sınırsız büyüyen veriyi (bir sohbetin binlerce mesajı) ayrı koleksiyona koy. Bir MongoDB belgesi en fazla 16 MB olabilir.
 
@@ -279,8 +288,7 @@ docs: ogrenme rehberi (docs klasoru)
 
 | Konu | Neden gerekli | Aşama |
 |---|---|---|
-| **MongoDB sohbet geçmişi** | Mesajları saklamak, modele geçmişi vermek | 7 |
-| **AI Memory** | Modeller durumsuz: hafıza = her istekte gönderdiğin metin. Kısa süreli (son N mesaj + özet) ve uzun süreli (kalıcı bilgiler) | 8 |
+| **AI Memory** (geçmişi modele geri vermek dahil) | Modeller durumsuz: hafıza = her istekte gönderdiğin metin. Kısa süreli (son N mesaj + özet) ve uzun süreli (kalıcı bilgiler) | 8 |
 | **RabbitMQ + Worker** | Claude 10-60 sn sürebilir; API kuyruğa atıp hemen 202 döner, Worker işler | 9 |
 | **LangFlow** | Karmaşık AI akışlarını (RAG, agent) görsel kurmak | 10 |
 | **CD, Skills, MCP** | Otomatik yayın; Claude'a tekrarlayan işleri öğretmek; Claude'u dış araçlara bağlamak | 11 |

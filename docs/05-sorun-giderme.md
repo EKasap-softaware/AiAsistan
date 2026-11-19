@@ -61,6 +61,11 @@ Sorun hangi halkada?
 ### 9. `warning: LF will be replaced by CRLF`
 **Anlamı:** Windows satır sonu dönüşümü hakkında bilgi. **Zararsız**, yok sayılabilir.
 
+### 10. MongoDB'de `countDocuments` 0 döndü ama kayıtlar orada
+**Neden:** MongoDB alan adları **büyük/küçük harf duyarlıdır**. Kod önce `OturumId` (PascalCase) yazdı, sorgu `oturumId` arıyordu. Driver varsayılan olarak C# özellik adını aynen kullanır.
+**Çözüm:** `CamelCaseElementNameConvention` ile alanlar `oturumId` biçimine çevrildi (`MongoSinifHaritalari`). Eski biçimdeki deneme kayıtları silindi (`db.mesajlar.drop()`).
+**Ders:** Alan adı biçimini (camelCase) projenin başında seç ve kod/convention ile sabitle; sonradan değiştirirsen eski belgeler eşleşmez.
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -72,6 +77,9 @@ Sorun hangi halkada?
 | `password authentication failed` (Postgres) | user-secrets'taki şifre `.env`'dekiyle uyuşmuyor | İkisini eşitle. Not: volume varsa Postgres **ilk açılıştaki** şifreyi tutar, `.env`'yi sonradan değiştirmek yetmez (veriyi silmek istemezsen şifreyi Postgres içinden değiştir; test verisi önemsizse `docker compose down -v`) |
 | `502` yanıtı `/api/sohbet`'ten | LiteLLM kapalı/yanlış anahtar/kredi yok | `docker compose logs litellm`, LiteLLM'e doğrudan istek |
 | LiteLLM `401` | `LiteLlm:Key` ile `LITELLM_MASTER_KEY` farklı | İkisini eşitle, API'yi yeniden başlat |
+| `Authentication failed` (MongoDB) | Bağlantı cümlesinde `?authSource=admin` yok veya şifre `.env` ile uyuşmuyor | `Mongo:Url`'i user-secrets'ta kontrol et; kullanıcı `admin` veritabanında tanımlı |
+| `/api/sohbet` hata verir, MongoDB loglarında uyarı | MongoDB kapalı | `docker compose ps`; index servisi uyarıyı loglar ama API düşmez |
+| Mesaj geçmişi boş geliyor | Yanlış `oturumId` ya da LLM hata verdiği için kayıt yapılmadı | `oturumId`'yi cevaptan aynen al; `docker compose logs litellm` |
 | `Address already in use` (5254) | Önceki `dotnet run` hâlâ çalışıyor | Eski pencereyi kapat veya portu kullanan işlemi bul |
 | `Database ... does not exist` / tablo yok | Migration uygulanmamış | `dotnet ef database update ...` |
 | Migration `Build failed` | Kodda derleme hatası var | Önce `dotnet build` ile düzelt |

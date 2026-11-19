@@ -39,7 +39,7 @@ Yanıt (201):
 
 İstek:
 ```json
-{ "kullaniciId": "1", "soru": "Dependency Injection nedir?" }
+{ "kullaniciId": "1", "soru": "Dependency Injection nedir?", "oturumId": "(isteğe bağlı)" }
 ```
 
 ```
@@ -47,6 +47,7 @@ Yanıt (201):
 2. DI: ISohbetServisi ──► SohbetServisi (ILlmIstemcisi içine takılır ──► LiteLlmIstemcisi)
 3. SohbetServisi.SorAsync
       a. Soru boş mu?                              ──► evet: ArgumentException (LLM çağrılmaz)
+      a2. oturumId yoksa yeni bir tane üret (Guid)
       b. Mesaj listesi kur:
            [ system: "Sen bir .NET eğitmenisin..."
              user:   "Dependency Injection nedir?" ]
@@ -62,7 +63,10 @@ Yanıt (201):
 6. Claude cevaplar ──► LiteLLM ──► OpenAI formatında JSON:
       { "choices": [ { "message": { "content": "..." } } ] }
 7. LiteLlmIstemcisi: choices[0].message.content'i okur
-8. Controller: 200 OK  { "cevap": "..." }
+7b. SohbetServisi: soru ve cevabı IMesajDeposu ile kaydeder
+      MongoMesajDeposu ──► InsertMany ──► MongoDB "mesajlar" koleksiyonu
+      (LLM hata verdiyse buraya hiç gelinmez, kayıt yapılmaz)
+8. Controller: 200 OK  { "cevap": "...", "oturumId": "..." }
       HttpRequestException ──► 502 Bad Gateway
 ```
 
@@ -70,8 +74,9 @@ Yanıt (201):
 
 **Bu akışın zayıf noktaları (bilerek, ileriki aşamalarda çözülecek):**
 - **Senkron:** Cevap 10-60 sn sürebilir, bağlantı o sürece bekler → Aşama 9'da kuyruk.
-- **Hafıza yok:** Her soru sıfırdan başlar, önceki konuşma bilinmez → Aşama 7-8.
-- **`kullaniciId` kullanılmıyor.**
+- **Kayıt var, hafıza yok:** Mesajlar MongoDB'ye yazılıyor ama modele geçmiş gönderilmiyor; her soru modele sıfırdan gidiyor → Aşama 8.
+- **`kullaniciId` sadece kayıt için saklanıyor**; kimlik doğrulama/yetkilendirme yok (herkes her oturumu okuyabilir).
+- **Kayıt başarısız olursa** (MongoDB kapalı) kullanıcı cevabı değil hata alır; cevap boşa gitmiş olur (kuyruk + yeniden deneme ile Aşama 9'da düzelecek).
 - LiteLLM hataları 5xx olunca controller hepsini 502 yapar; ayrım yok.
 
 ---
@@ -110,6 +115,13 @@ Yanıt (201):
 - `Microsoft.Extensions.Http` paketi eksikti (`AddHttpClient` bulunamadı) → eklendi.
 - **Doğrulama:** Önce kredi yokken `credit balance is too low` hatası alındı (zincir çalışıyordu). 5 dolar kredi yüklenince hem LiteLLM'e doğrudan istek hem `POST /api/sohbet` (200 + Claude cevabı) ve boş soru (400) denendi.
 
+### Aşama 7: MongoDB sohbet geçmişi · `feat: MongoDB ile sohbet gecmisi`
+- `MongoDB.Driver` ve `Microsoft.Extensions.Hosting.Abstractions` paketleri; bağlantı cümlesi `user-secrets`'a (`Mongo:Url`).
+- Domain: `Mesaj`. Application: `IMesajDeposu`, `SohbetServisi` güncellendi (oturum, kayıt, `SohbetSonucu`). Infrastructure: `MongoMesajDeposu`, `MongoSinifHaritalari`, `MongoIndexServisi`, DI kayıtları. Api: `oturumId` desteği + `GET /api/sohbet/{oturumId}/mesajlar`.
+- Domain'i MongoDB'ye bağlamamak için ObjectId/camelCase kuralları attribute yerine **class map + convention** ile Infrastructure'da.
+- İlk denemede alan adları `OturumId` (PascalCase) çıktı; MongoDB camelCase beklenir ve sorgular büyük/küçük harf duyarlıdır → `CamelCaseElementNameConvention` eklendi, deneme kayıtları silinip yeniden denendi.
+- **Doğrulama:** İki soru aynı oturumda soruldu; `GET .../mesajlar` 4 mesajı doğru sırada döndü; `mongosh` ile `_id` gerçek `ObjectId`, index `oturumId_1_olusturulma_-1`; boş soru 400 ve kayıt yazılmadı. Testler 13 → 18.
+
 ### Temizlik · `docs: README ve gercek .http ornekleri`, `docs: ogrenme rehberi`
 - Şablondan kalan hatalı `.http` dosyası gerçek isteklerle değiştirildi, README ve bu rehber eklendi.
 
@@ -119,7 +131,6 @@ Yanıt (201):
 
 | Aşama | Yapılacak | Çıktı |
 |---|---|---|
-| 7 | MongoDB: `Mesaj` modeli, `MongoMesajDeposu`, index | Her soru-cevap MongoDB'de (Compass ile görülür) |
 | 8 | AI Memory: kayan pencere + özet + uzun süreli hafıza | Asistan önceki oturumu hatırlıyor |
 | 9 | RabbitMQ + MassTransit + Worker | API anında 202, cevap Worker'dan |
 | 10 | LangFlow RAG akışı | Asistan dokümanlardan cevap veriyor |

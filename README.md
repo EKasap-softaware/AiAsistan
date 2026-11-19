@@ -4,17 +4,18 @@
 
 > **Öğrenme rehberi:** her dosyanın ne işe yaradığı, kavramlar, komutlar ve sorun giderme için [docs/00-INDEKS.md](docs/00-INDEKS.md) dosyasından başla.
 
-## Şu an ne var? (Aşama 6/11)
+## Şu an ne var? (Aşama 7/11)
 
 | Aşama | Konu | Durum |
 |---|---|---|
 | 1 | Solution iskeleti | ✅ |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | ✅ |
 | 3 | EF Core + `/api/kullanicilar` | ✅ |
-| 4 | Unit testler | ✅ (13 test) |
+| 4 | Unit testler | ✅ (18 test) |
 | 5 | CI (GitHub Actions) | ✅ dosya hazır, Actions sekmesinden doğrulanacak |
 | 6 | LiteLLM + `/api/sohbet` | ✅ Claude cevap veriyor |
-| 7-11 | MongoDB geçmişi, hafıza, kuyruk, LangFlow, CD | ❌ |
+| 7 | MongoDB sohbet geçmişi | ✅ soru-cevap kaydediliyor |
+| 8-11 | Hafıza, kuyruk, LangFlow, CD | ❌ |
 
 ## Klasörler
 

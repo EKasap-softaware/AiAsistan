@@ -9,8 +9,17 @@ Content-Type: application/json
 ### Kullanıcıyı getir (200, yoksa 404)
 GET {{host}}/api/kullanicilar/1
 
-### Claude'a soru sor (LiteLLM ve API anahtarı gerekir)
+### Claude'a soru sor: yeni sohbet başlar, cevapta oturumId gelir
 POST {{host}}/api/sohbet
 Content-Type: application/json
 
 { "kullaniciId": "1", "soru": "Dependency Injection nedir?" }
+
+### Aynı sohbete devam et (yukarıdaki cevapta gelen oturumId'yi yapıştır)
+POST {{host}}/api/sohbet
+Content-Type: application/json
+
+{ "kullaniciId": "1", "soru": "Peki Scoped nedir?", "oturumId": "BURAYA-OTURUM-ID" }
+
+### Bir oturumun mesajlarını oku (eskiden yeniye)
+GET {{host}}/api/sohbet/BURAYA-OTURUM-ID/mesajlar?adet=20

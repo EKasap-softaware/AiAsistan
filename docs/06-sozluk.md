@@ -17,9 +17,12 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Branch** | Ana koddan ayrılmış paralel çalışma dalı. |
 | **Build** | Kodu derleyip çalıştırılabilir hale getirme. |
 | **BSON** | MongoDB'nin belge saklama biçimi (ikili JSON). |
+| **camelCase** | İlk harfi küçük, sonraki kelimeler büyük yazım (`oturumId`). MongoDB alan adlarında yaygın. |
 | **CD** | Continuous Delivery/Deployment: testten sonra yayını otomatikleştirme. |
 | **CI** | Continuous Integration: her push'ta otomatik derleme ve test. |
 | **Clean Architecture** | Bağımlılıkların içe doğru aktığı katmanlı yapı. |
+| **Class map (MongoDB)** | Bir C# sınıfının MongoDB'de nasıl saklanacağını (Id türü, alan adları) kodla tarif etmek; sınıfa attribute koymaktan temizdir. |
+| **Collection (Koleksiyon)** | MongoDB'de tablonun karşılığı (`mesajlar`). |
 | **Commit** | Git'te kalıcı kayıt noktası. |
 | **Compose** | Birden çok Docker container'ını tek dosyada tarif etme aracı. |
 | **Conflict (Git)** | İki kişi aynı satırı değiştirdiğinde Git'in sorması. HTTP'de `409`. |
@@ -32,6 +35,7 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **DbSet** | DbContext içinde bir tabloyu temsil eden koleksiyon. |
 | **Dead-letter queue (DLQ)** | Defalarca başarısız olan mesajların gittiği kuyruk. |
 | **Dependency Injection (DI)** | Nesneyi kendin yaratmak yerine dışarıdan almak. |
+| **Document (Belge)** | MongoDB'de satırın karşılığı: JSON benzeri bir kayıt. |
 | **Docker** | Uygulamayı bağımlılıklarıyla paketleyip her yerde aynı çalıştıran araç. |
 | **Dockerfile** | Image'ın nasıl inşa edileceğini anlatan dosya. |
 | **Domain** | Saf iş kavramları ve veri sınıfları katmanı. |
@@ -45,6 +49,7 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Fallback** | Asıl model çalışmazsa otomatik yedek modele geçme. |
 | **Foreign key** | Bir tablonun başka bir tabloya bağlandığı kolon (`KullaniciId`). |
 | **Healthcheck** | Servisin gerçekten hazır olup olmadığını denetleyen küçük komut. |
+| **Hosted service** | Uygulama açılırken/kapanırken çalışan arka plan bileşeni (`IHostedService`); biz index kurmak için kullandık. |
 | **HTTP kodları** | `200` tamam, `201` oluşturuldu, `202` kabul edildi, `400` kötü istek, `401` yetkisiz, `404` yok, `409` çakışma, `500` sunucu hatası, `502` arkadaki servise ulaşılamadı. |
 | **Idempotent** | Aynı işlem iki kez yapılsa da sonucu değişmeyen. |
 | **Image (Docker)** | Uygulama + bağımlılıklarının salt-okunur paketi. |
@@ -68,7 +73,9 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **N+1** | Döngüde her satır için ayrı sorgu atma hatası. |
 | **NuGet** | .NET'in paket deposu. |
 | **Nullable** | `string` ile `string?` ayrımını derleyicinin denetlemesi. |
+| **ObjectId** | MongoDB'nin otomatik ürettiği 12 baytlık benzersiz `_id` türü; zamana göre artar. |
 | **ORM** | Tabloları nesne gibi kullanmayı sağlayan katman (EF Core). |
+| **Oturum (sohbet)** | Aynı konuşmaya ait mesajları birbirine bağlayan kimlik (`oturumId`). |
 | **OpenAPI** | API'nin makine-okur tarifi (`/openapi/v1.json`). |
 | **Port mapping** | `5432:5432`: bilgisayar portu : container portu. |
 | **PostgreSQL** | Güçlü, ilişkisel (SQL) veritabanı. |
