@@ -1,0 +1,129 @@
+# 03 · Bir isteğin yolculuğu ve aşama günlüğü
+
+## A. Yolculuk 1: Kullanıcı oluşturma (`POST /api/kullanicilar`)
+
+İstek:
+```json
+{ "ad": "Emre", "email": "Emre@Test.com" }
+```
+
+```
+1. İstemci ──► Kestrel (ASP.NET'in web sunucusu) :5254
+2. Middleware hattı (HTTPS yönlendirme, yetkilendirme)
+3. Yönlendirme: POST /api/kullanicilar ──► KullanicilarController.Olustur
+4. DI: controller'ın istediği IKullaniciServisi ──► KullaniciServisi (zincir otomatik kurulur)
+5. KullaniciServisi.OlusturAsync
+      a. Ad boş mu? E-posta geçerli mi?          ──► değilse ArgumentException
+      b. E-postayı  Trim + küçük harf yap         ──► "emre@test.com"
+      c. depo.EmailVarMiAsync(email)              ──► varsa EmailZatenVarException
+      d. new Kullanici { Ad, Email }
+      e. depo.EkleAsync(kullanici)
+6. KullaniciDeposu.EkleAsync
+      db.Kullanicilar.Add(...) + SaveChangesAsync ──► Npgsql ──► PostgreSQL (INSERT)
+7. Controller sonucu HTTP koduna çevirir:
+      başarı            ──► 201 Created  (+ Location başlığı)
+      ArgumentException ──► 400 Bad Request
+      EmailZatenVar     ──► 409 Conflict
+```
+
+Yanıt (201):
+```json
+{ "id": 1, "ad": "Emre", "email": "emre@test.com", "kayitTarihi": "2026-11-19T08:49:05Z" }
+```
+
+**Dikkat edilecek yer:** 5b'de e-posta küçük harfe çevriliyor ve 5c bu hâliyle kontrol ediliyor. Yani `EMRE@test.com` ile `emre@test.com` aynı kişi sayılır. Veritabanındaki unique index de ikinci güvence.
+
+---
+
+## B. Yolculuk 2: Claude'a soru sorma (`POST /api/sohbet`)
+
+İstek:
+```json
+{ "kullaniciId": "1", "soru": "Dependency Injection nedir?" }
+```
+
+```
+1. İstemci ──► API :5254 ──► SohbetController.Sor
+2. DI: ISohbetServisi ──► SohbetServisi (ILlmIstemcisi içine takılır ──► LiteLlmIstemcisi)
+3. SohbetServisi.SorAsync
+      a. Soru boş mu?                              ──► evet: ArgumentException (LLM çağrılmaz)
+      b. Mesaj listesi kur:
+           [ system: "Sen bir .NET eğitmenisin..."
+             user:   "Dependency Injection nedir?" ]
+      c. llm.TamamlaAsync(mesajlar)  (model varsayılan: "akilli")
+4. LiteLlmIstemcisi
+      POST http://localhost:4000/v1/chat/completions
+      Authorization: Bearer <LiteLlm:Key>
+      { "model": "akilli", "messages": [ {role, content}, ... ] }
+5. LiteLLM (Docker)
+      a. Master key'i doğrular
+      b. config.yaml: "akilli" ──► anthropic/claude-sonnet-5-5
+      c. ANTHROPIC_API_KEY ile Anthropic'e iletir
+6. Claude cevaplar ──► LiteLLM ──► OpenAI formatında JSON:
+      { "choices": [ { "message": { "content": "..." } } ] }
+7. LiteLlmIstemcisi: choices[0].message.content'i okur
+8. Controller: 200 OK  { "cevap": "..." }
+      HttpRequestException ──► 502 Bad Gateway
+```
+
+**Şu an nerede takılıyoruz:** 5c ve 6. LiteLLM isteği Anthropic'e iletiyor, ama hesapta kredi olmadığı için `credit balance is too low` hatası dönüyor. (Kod, config ve anahtar doğru; sadece kredi yüklenmeli.)
+
+**Bu akışın zayıf noktaları (bilerek, ileriki aşamalarda çözülecek):**
+- **Senkron:** Cevap 10-60 sn sürebilir, bağlantı o sürece bekler → Aşama 9'da kuyruk.
+- **Hafıza yok:** Her soru sıfırdan başlar, önceki konuşma bilinmez → Aşama 7-8.
+- **`kullaniciId` kullanılmıyor.**
+- LiteLLM hataları 5xx olunca controller hepsini 502 yapar; ayrım yok.
+
+---
+
+## C. Aşama günlüğü: neyi, neden, hangi sırayla yaptık
+
+### Aşama 1: İskelet · commit `chore: solution iskeleti`
+- `dotnet new sln` + 5 proje + 1 test projesi, referanslar, `Directory.Build.props`, `.gitignore`, `CLAUDE.md`, git repo (`main`).
+- Şablonlardan gelen `Class1.cs`, `WeatherForecast` dosyaları silindi.
+- **Sonuç:** `dotnet build` yeşil.
+
+### Aşama 2: Docker altyapısı · `feat: docker compose ile postgres, mongo, rabbitmq`
+- `docker-compose.yml`, `.env`, `.env.example`. Portlar önceden boş mu diye kontrol edildi.
+- Sürümler sabitlendi (`latest` yok), healthcheck eklendi.
+- **Doğrulama:** Postgres `select 1`, Mongo `ping`, RabbitMQ API cevap verdi.
+
+### Aşama 3: EF Core + ilk API · `feat: kullanici entity, EF Core, ilk migration ve /api/kullanicilar`
+- Domain → Application → Infrastructure → Api sırasıyla yazıldı (içten dışa).
+- Bağlantı cümlesi `user-secrets`'a konuldu (dosyaya değil).
+- `dotnet-ef` proje-yerel araç olarak kuruldu (global kurulum "tool restore" hatası verdi).
+- Scalar'ın son sürümü .NET 9 ile uyumsuz çıktı → 2.12.* sabitlendi.
+- **Doğrulama:** 201 / 409 / 400 / 200 / 404 gerçek isteklerle denendi; veritabanında satır görüldü.
+
+### Aşama 4: Unit test · `test: KullaniciServisi icin unit testler`
+- Moq + FluentAssertions 7.x (8. sürüm ticari).
+- **Mutasyon kontrolü:** `ToLowerInvariant()` silindi → test kırıldı → geri yüklendi.
+
+### Aşama 5: CI · `ci: github actions ile build ve test workflow'u`
+- Workflow yazıldı; adımlar yerelde birebir çalıştırıldı (Release build 0 uyarı, testler yeşil).
+- Repo `https://github.com/EKasap-softaware/Caricep_yeni` (boştu) → `main` push edildi. Push öncesi `.env`'nin Git'e girmediği doğrulandı.
+- **Açık iş:** Actions sekmesinden ilk çalışmanın yeşil olduğunu görmek; branch protection.
+
+### Aşama 6: LiteLLM · `feat: LiteLLM istemcisi, SohbetServisi ve POST /api/sohbet`
+- `litellm/config.yaml`, compose'a `litellm` servisi, `.env`'ye iki yeni değişken.
+- `ILlmIstemcisi` / `SohbetServisi` / `LiteLlmIstemcisi` / `SohbetController`, 4 yeni test.
+- `Microsoft.Extensions.Http` paketi eksikti (`AddHttpClient` bulunamadı) → eklendi.
+- **Doğrulama:** LiteLLM ayağa kalktı; doğrudan istek Anthropic'e ulaştı ama hesapta kredi yok (`credit balance is too low`).
+
+### Temizlik · `docs: README ve gercek .http ornekleri`, `docs: ogrenme rehberi`
+- Şablondan kalan hatalı `.http` dosyası gerçek isteklerle değiştirildi, README ve bu rehber eklendi.
+
+---
+
+## D. Sırada ne var
+
+| Aşama | Yapılacak | Çıktı |
+|---|---|---|
+| 6'yı bitirmek | Anthropic'e kredi yükle, `/api/sohbet` dene | API'den Claude cevabı |
+| 7 | MongoDB: `Mesaj` modeli, `MongoMesajDeposu`, index | Her soru-cevap MongoDB'de (Compass ile görülür) |
+| 8 | AI Memory: kayan pencere + özet + uzun süreli hafıza | Asistan önceki oturumu hatırlıyor |
+| 9 | RabbitMQ + MassTransit + Worker | API anında 202, cevap Worker'dan |
+| 10 | LangFlow RAG akışı | Asistan dokümanlardan cevap veriyor |
+| 11 | Dockerfile, CD, skill, MCP | `main`'e merge = otomatik yayın |
+
+**Her aşamadaki çalışma ritmi:** yeni branch → rehberdeki bölümü oku → kodu yaz → test yaz → `dotnet test` → commit → push → PR → CI yeşil → merge → "ne öğrendim?" sorusunu 3 cümleyle yanıtla.

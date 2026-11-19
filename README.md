@@ -2,6 +2,8 @@
 
 Öğrenme projesi: .NET ile yazılmış, Claude'a LiteLLM üzerinden soru soran bir API.
 
+> **Öğrenme rehberi:** her dosyanın ne işe yaradığı, kavramlar, komutlar ve sorun giderme için [docs/00-INDEKS.md](docs/00-INDEKS.md) dosyasından başla.
+
 ## Şu an ne var? (Aşama 6/11)
 
 | Aşama | Konu | Durum |
