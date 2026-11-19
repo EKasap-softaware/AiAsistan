@@ -23,13 +23,12 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapScalarApiReference(); // /scalar/v1
-
-    // Ana sayfa yok; "/" açılınca 404 yerine API deneme ekranına yönlendir.
-    app.MapGet("/", () => Results.Redirect("/scalar/v1")).ExcludeFromDescription();
+    app.MapScalarApiReference(); // /scalar/v1 (teknik API deneme ekranı)
 }
 
 app.UseHttpsRedirection();
+app.UseDefaultFiles();   // "/" açılınca wwwroot/index.html
+app.UseStaticFiles();    // wwwroot/ klasörünü sunar: projenin görebildiğin arayüzü
 app.UseAuthorization();
 app.MapControllers();
 

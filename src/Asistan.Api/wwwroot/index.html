@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AiAsistan</title>
+<style>
+  :root { --bg:#f6f5f1; --kart:#fff; --yazi:#1f1f1c; --soluk:#6b6a63; --cizgi:#dcdad0; --vurgu:#0f6e56; --vurgu-bg:#e1f5ee; --uyari:#854f0b; --uyari-bg:#faeeda; --hata:#a32d2d; --hata-bg:#fcebeb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b19; --kart:#262624; --yazi:#ecebe4; --soluk:#a3a198; --cizgi:#3a3a36; --vurgu:#5dcaa5; --vurgu-bg:#04342c; --uyari:#fac775; --uyari-bg:#412402; --hata:#f09595; --hata-bg:#501313; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--yazi); font:16px/1.6 system-ui, "Segoe UI", sans-serif; }
+  .sayfa { max-width:1100px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:24px; margin:0 0 4px; font-weight:600; }
+  h2 { font-size:16px; margin:0 0 10px; font-weight:600; }
+  .amac { background:var(--kart); border:1px solid var(--cizgi); border-radius:12px; padding:14px 16px; margin:12px 0 18px; }
+  .amac p { margin:0 0 6px; } .amac p:last-child { margin:0; color:var(--soluk); font-size:14px; }
+  .duzen { display:grid; grid-template-columns: 1fr 340px; gap:16px; align-items:start; }
+  @media (max-width: 860px) { .duzen { grid-template-columns: 1fr; } }
+  .kart { background:var(--kart); border:1px solid var(--cizgi); border-radius:12px; padding:14px 16px; }
+  .kart + .kart { margin-top:16px; }
+  label { display:block; font-size:13px; color:var(--soluk); margin:0 0 3px; }
+  input, select, textarea { width:100%; font:inherit; color:inherit; background:var(--bg); border:1px solid var(--cizgi); border-radius:8px; padding:8px 10px; }
+  textarea { min-height:70px; resize:vertical; }
+  .satir { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px; }
+  button { font:inherit; cursor:pointer; border:1px solid var(--cizgi); background:var(--kart); color:var(--yazi); border-radius:8px; padding:8px 14px; }
+  button.ana { background:var(--vurgu); border-color:var(--vurgu); color:#fff; font-weight:600; }
+  @media (prefers-color-scheme: dark) { button.ana { color:#04342c; } }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .ipucu { font-size:13px; color:var(--soluk); margin:6px 0 0; }
+  .soru { border:1px solid var(--cizgi); border-radius:12px; padding:12px 14px; margin-top:14px; }
+  .soru-baslik { display:flex; gap:8px; align-items:baseline; justify-content:space-between; }
+  .soru-metin { font-weight:600; white-space:pre-wrap; word-break:break-word; }
+  .etiket { font-size:12px; border-radius:99px; padding:1px 9px; background:var(--vurgu-bg); color:var(--vurgu); white-space:nowrap; }
+  .adimlar { list-style:none; padding:0; margin:10px 0 6px; font-size:14px; }
+  .adimlar li { display:flex; gap:8px; align-items:baseline; padding:1px 0; color:var(--soluk); }
+  .adimlar li.yapildi { color:var(--yazi); } .adimlar li.suruyor { color:var(--uyari); }
+  .adimlar .nokta { width:16px; text-align:center; } .adimlar .sure { margin-left:auto; font-variant-numeric:tabular-nums; font-size:13px; color:var(--soluk); }
+  .cevap { margin-top:8px; padding:10px 12px; background:var(--bg); border-radius:8px; word-break:break-word; }
+  .cevap p { margin:4px 0; } .cevap ul { margin:4px 0; padding-left:20px; }
+  code { font-family: ui-monospace, Consolas, monospace; background:var(--cizgi); padding:0 5px; border-radius:4px; font-size:.92em; }
+  .cevap.hata { background:var(--hata-bg); color:var(--hata); }
+  .uyari { margin-top:8px; padding:8px 10px; border-radius:8px; background:var(--uyari-bg); color:var(--uyari); font-size:14px; }
+  .hafiza { list-style:none; margin:0; padding:0; }
+  .hafiza li { display:flex; gap:8px; justify-content:space-between; align-items:flex-start; padding:7px 0; border-top:1px solid var(--cizgi); font-size:14px; }
+  .hafiza li:first-child { border-top:0; }
+  .hafiza button { padding:2px 8px; font-size:12px; }
+  .bos { color:var(--soluk); font-size:14px; }
+  .akis { font-size:14px; margin:0; padding-left:18px; } .akis li { margin:3px 0; }
+  a { color:var(--vurgu); }
+</style>
+</head>
+<body>
+<div class="sayfa">
+  <h1>AiAsistan</h1>
+  <div class="amac">
+    <p><b>Bu ne işe yarar?</b> Yapay zekâya (Claude) soru sorarsın. Soru bir <b>kuyruğa</b> girer, arka planda çalışan bir <b>işçi (Worker)</b> modele sorar ve cevabı sana getirir. Asistan <b>seni ve konuşmayı hatırlar</b>, istersen <b>proje dokümanlarından</b> da cevap verir.</p>
+    <p>Aşağıdan bir soru sor: sorunun yolculuğunu adım adım canlı göreceksin. Teknik API testi için <a href="/scalar/v1">/scalar/v1</a>.</p>
+  </div>
+
+  <div class="duzen">
+    <div>
+      <div class="kart">
+        <h2>Soru sor</h2>
+        <div class="satir">
+          <div><label for="kullanici">Sen kimsin? (kullanıcı adı)</label><input id="kullanici" value="demo"></div>
+          <div><label for="mod">Nasıl cevaplasın?</label>
+            <select id="mod">
+              <option value="sohbet">Sohbet: beni ve konuşmayı hatırlar</option>
+              <option value="dokuman">Doküman: sadece proje dokümanlarından</option>
+            </select></div>
+        </div>
+        <label for="soru">Sorun</label>
+        <textarea id="soru" placeholder="Örn: Merhaba, ben Ayşe. C# öğreniyorum."></textarea>
+        <p style="margin:10px 0 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <button class="ana" id="gonder">Gönder</button>
+          <button id="yeniSohbet" title="Yeni bir konuşma başlatır; asistan bu konuşmanın geçmişini unutur ama seni hatırlamaya devam eder">Yeni sohbet</button>
+          <span class="ipucu" id="oturumBilgi"></span>
+        </p>
+        <p class="ipucu">Dokümanda olmayan bir şey sorarsan (ör. "2027 pazarlama bütçesi") doküman modu uydurmaz, "Bu bilgi dokümanlarda yok." der.</p>
+      </div>
+      <div id="sorular"></div>
+    </div>
+
+    <div>
+      <div class="kart">
+        <h2>Asistan seni nasıl hatırlıyor?</h2>
+        <p class="ipucu" style="margin:0 0 8px">Sohbet ettikçe asistan senin hakkında kalıcı bilgileri (adın, hedefin) kaydeder; <b>yeni bir sohbette</b> de hatırlar. İstediğini silebilirsin.</p>
+        <ul class="hafiza" id="hafiza"></ul>
+        <p style="margin:10px 0 0; display:flex; gap:8px"><button id="hafizaYenile">Yenile</button><button id="hafizaSil">Hepsini sil</button></p>
+      </div>
+      <div class="kart">
+        <h2>Arka planda ne oluyor?</h2>
+        <ol class="akis">
+          <li><b>API</b> soruyu alır, kuyruğa bırakır, hemen "kabul ettim" (202) der.</li>
+          <li><b>RabbitMQ</b> soruyu sırada bekletir (Worker kapalı olsa bile kaybolmaz).</li>
+          <li><b>Worker</b> soruyu alır; hafızanı hazırlar ve modele sorar.</li>
+          <li><b>LiteLLM</b> isteği Claude'a çevirir.</li>
+          <li>Cevap <b>MongoDB</b>'ye kaydedilir; sen buradan okursun.</li>
+          <li>Cevaptan sonra arka planda özet ve hafıza çıkarılır.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let oturumId = sessionStorage.getItem("oturumId") || null;
+
+  function oturumGoster() {
+    $("oturumBilgi").textContent = oturumId ? "Konuşma devam ediyor (önceki mesajları hatırlar)" : "Yeni konuşma";
+  }
+  oturumGoster();
+
+  async function api(yol, secenek) {
+    const r = await fetch(yol, secenek);
+    let govde = null;
+    try { govde = await r.json(); } catch { /* gövde yok */ }
+    return { durum: r.status, govde };
+  }
+
+  const saniye = (ms) => (ms / 1000).toFixed(1) + " sn";
+
+  // Modelin yazdığı **kalın**, `kod` ve "- madde" biçimlerini gösterir.
+  // GÜVENLİK: innerHTML KULLANMAZ; her parça textContent ile eklenir, yani cevaptaki HTML çalışmaz.
+  function satirIcerik(metin, ust) {
+    for (const p of metin.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)) {
+      if (p.length > 4 && p.startsWith("**") && p.endsWith("**")) { const b = document.createElement("b"); b.textContent = p.slice(2, -2); ust.append(b); }
+      else if (p.length > 2 && p.startsWith("`") && p.endsWith("`")) { const c = document.createElement("code"); c.textContent = p.slice(1, -1); ust.append(c); }
+      else ust.append(document.createTextNode(p));
+    }
+  }
+  function cevapYaz(metin, hedef) {
+    hedef.replaceChildren();
+    let liste = null;
+    for (const satir of metin.split("\n")) {
+      const m = satir.match(/^\s*[-*]\s+(.*)$/);
+      if (m) { if (!liste) { liste = document.createElement("ul"); hedef.append(liste); } const li = document.createElement("li"); satirIcerik(m[1], li); liste.append(li); }
+      else { liste = null; if (satir.trim() === "") continue; const p = document.createElement("p"); satirIcerik(satir, p); hedef.append(p); }
+    }
+  }
+
+  function kartKur(soru, mod) {
+    const kart = document.createElement("div");
+    kart.className = "soru";
+    const baslik = document.createElement("div"); baslik.className = "soru-baslik";
+    const metin = document.createElement("div"); metin.className = "soru-metin"; metin.textContent = soru;
+    const et = document.createElement("span"); et.className = "etiket"; et.textContent = mod === "dokuman" ? "doküman" : "sohbet";
+    baslik.append(metin, et);
+    const adimlar = document.createElement("ul"); adimlar.className = "adimlar";
+    const tanim = [["gonder", "Soru API'ye gönderildi"], ["kuyruk", "Kuyruğa alındı, sırada bekliyor"], ["isle", "Worker işliyor (modele soruyor)"], ["bitti", "Cevap hazır"]];
+    const satirlar = {};
+    for (const [k, ad] of tanim) {
+      const li = document.createElement("li");
+      const nokta = document.createElement("span"); nokta.className = "nokta"; nokta.textContent = "○";
+      const yazi = document.createElement("span"); yazi.textContent = ad;
+      const sure = document.createElement("span"); sure.className = "sure";
+      li.append(nokta, yazi, sure); adimlar.append(li); satirlar[k] = { li, nokta, sure };
+    }
+    const cevap = document.createElement("div");
+    kart.append(baslik, adimlar, cevap);
+    $("sorular").prepend(kart);
+    const isaretle = (k, t0, durum) => {
+      const s = satirlar[k];
+      s.li.className = durum; s.nokta.textContent = durum === "yapildi" ? "✓" : durum === "suruyor" ? "…" : "○";
+      if (durum === "yapildi") s.sure.textContent = saniye(performance.now() - t0);
+    };
+    return { kart, cevap, isaretle };
+  }
+
+  async function gonder() {
+    const soru = $("soru").value.trim();
+    const kullanici = $("kullanici").value.trim();
+    const mod = $("mod").value;
+    if (!soru || !kullanici) { alert("Kullanıcı adı ve soru boş olamaz."); return; }
+    $("gonder").disabled = true;
+    const k = kartKur(soru, mod);
+    const t0 = performance.now();
+    k.isaretle("gonder", t0, "suruyor");
+    try {
+      const govde = { kullaniciId: kullanici, soru, mod };
+      if (oturumId) govde.oturumId = oturumId;
+      const yanit = await api("/api/sohbet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(govde) });
+      if (yanit.durum !== 202) {
+        k.isaretle("gonder", t0, "yapildi");
+        k.cevap.className = "cevap hata"; k.cevap.textContent = "Hata (" + yanit.durum + "): " + (yanit.govde?.hata || "bilinmeyen");
+        return;
+      }
+      k.isaretle("gonder", t0, "yapildi"); k.isaretle("kuyruk", t0, "suruyor");
+      oturumId = yanit.govde.oturumId; sessionStorage.setItem("oturumId", oturumId); oturumGoster();
+      $("soru").value = "";
+      await bekle(yanit.govde.isId, k, t0);
+    } catch (e) {
+      k.cevap.className = "cevap hata"; k.cevap.textContent = "Bağlantı hatası: " + e.message;
+    } finally { $("gonder").disabled = false; }
+  }
+
+  async function bekle(isId, k, t0) {
+    let uyari = null, isliyor = false;
+    for (let i = 0; i < 240; i++) {                       // en fazla ~3 dakika
+      await new Promise((r) => setTimeout(r, 700));
+      const { govde: is } = await api("/api/isler/" + isId);
+      if (!is) continue;
+      if (is.durum === "Isleniyor" && !isliyor) { isliyor = true; k.isaretle("kuyruk", t0, "yapildi"); k.isaretle("isle", t0, "suruyor"); }
+      if (is.durum === "Bekliyor" && !uyari && performance.now() - t0 > 6000) {
+        uyari = document.createElement("div"); uyari.className = "uyari";
+        uyari.textContent = "Soru 6 saniyedir sırada bekliyor. Worker çalışmıyor olabilir; soru kaybolmaz, Worker açılınca işlenir.";
+        k.kart.append(uyari);
+      }
+      if (is.durum === "Tamamlandi" || is.durum === "Hata") {
+        if (uyari) uyari.remove();
+        k.isaretle("kuyruk", t0, "yapildi"); k.isaretle("isle", t0, "yapildi");
+        if (is.durum === "Tamamlandi") {
+          k.isaretle("bitti", t0, "yapildi");
+          k.cevap.className = "cevap"; cevapYaz(is.cevap, k.cevap);
+          setTimeout(hafizaYukle, 4000); setTimeout(hafizaYukle, 10000);   // hafıza çıkarma arka planda biraz sonra biter
+        } else {
+          k.cevap.className = "cevap hata"; k.cevap.textContent = (is.hata || "Soru işlenemedi") + " (denemeler: " + is.denemeSayisi + ")";
+        }
+        return;
+      }
+    }
+    k.cevap.className = "cevap hata"; k.cevap.textContent = "Zaman aşımı: cevap gelmedi.";
+  }
+
+  async function hafizaYukle() {
+    const kullanici = $("kullanici").value.trim(); if (!kullanici) return;
+    const { govde } = await api("/api/hafiza/" + encodeURIComponent(kullanici));
+    const ul = $("hafiza"); ul.replaceChildren();
+    if (!govde || govde.length === 0) { const li = document.createElement("li"); li.className = "bos"; li.textContent = "Henüz seni hakkında bir şey hatırlamıyor."; ul.append(li); return; }
+    for (const h of govde) {
+      const li = document.createElement("li");
+      const t = document.createElement("span"); t.textContent = h.icerik;
+      const b = document.createElement("button"); b.textContent = "Sil";
+      b.onclick = async () => { await api("/api/hafiza/" + encodeURIComponent(kullanici) + "/" + h.id, { method: "DELETE" }); hafizaYukle(); };
+      li.append(t, b); ul.append(li);
+    }
+  }
+
+  $("gonder").onclick = gonder;
+  $("soru").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) gonder(); });
+  $("yeniSohbet").onclick = () => { oturumId = null; sessionStorage.removeItem("oturumId"); oturumGoster(); $("sorular").replaceChildren(); };
+  $("hafizaYenile").onclick = hafizaYukle;
+  $("hafizaSil").onclick = async () => { if (confirm("Asistanın senin hakkında hatırladığı HER ŞEY silinsin mi?")) { await api("/api/hafiza/" + encodeURIComponent($("kullanici").value.trim()), { method: "DELETE" }); hafizaYukle(); } };
+  $("kullanici").addEventListener("change", () => { oturumId = null; sessionStorage.removeItem("oturumId"); oturumGoster(); hafizaYukle(); });
+  hafizaYukle();
+</script>
+</body>
+</html>
