@@ -15,6 +15,7 @@ Hiçbir şeyi ezberlemen gerekmez: takıldığında buraya dön.
 | "Hangi komutu yazmalıyım?" | [04-komut-rehberi.md](04-komut-rehberi.md) |
 | "Hata aldım, ne yapayım?" | [05-sorun-giderme.md](05-sorun-giderme.md) |
 | "Bu kelime ne demek?" | [06-sozluk.md](06-sozluk.md) |
+| "Bu proje ne işe yarıyor, nereye bağlı? Çizim var mı?" | [07-tasarim-ve-mimari.md](07-tasarim-ve-mimari.md) |
 
 ## Önerilen okuma sırası (ilk kez)
 1. Bu dosyanın altındaki "Büyük resim".
