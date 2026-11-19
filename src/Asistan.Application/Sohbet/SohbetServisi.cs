@@ -40,10 +40,8 @@ public class SohbetServisi(ILlmIstemcisi llm, IMesajDeposu mesajlar, IHafizaServ
             new Mesaj { OturumId = oturumId, KullaniciId = kullaniciId, Rol = "assistant", Icerik = cevap, Olusturulma = simdi }
         ], ct);
 
-        // 4) Özetleme ve kalıcı bilgi çıkarma (hata verse de kullanıcının cevabını etkilemez).
-        //    Aşama 9'da bu iş kuyruğa/Worker'a taşınacak.
-        await hafiza.SohbetSonrasiAsync(kullaniciId, oturumId, temizSoru, cevap, ct);
-
+        // Özetleme ve kalıcı bilgi çıkarma BURADA yapılmaz: cevap hazır olur olmaz kullanıcıya dönmeli.
+        // O iş, Worker'da "SohbetTamamlandi" mesajıyla ayrı bir adım olarak çalışır (Aşama 9).
         return new SohbetSonucu(cevap, oturumId);
     }
 

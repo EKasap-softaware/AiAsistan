@@ -27,7 +27,12 @@ public static class MongoSinifHaritalari
             // Class map'lerden ÖNCE kaydedilmeli.
             ConventionRegistry.Register(
                 "AsistanCamelCase",
-                new ConventionPack { new CamelCaseElementNameConvention() },
+                new ConventionPack
+                {
+                    new CamelCaseElementNameConvention(),
+                    // Enum'lar sayı (0,1,2) yerine okunur yazı olarak saklanır: durum: "Tamamlandi"
+                    new EnumRepresentationConvention(BsonType.String)
+                },
                 t => t.Namespace != null && t.Namespace.StartsWith("Asistan.Domain"));
 
             Haritala<Mesaj>(m => m.Id);
@@ -67,6 +72,13 @@ public class MongoIndexServisi(IMongoDatabase db, ILogger<MongoIndexServisi> log
             await db.GetCollection<Hafiza>(MongoHafizaDeposu.KoleksiyonAdi).Indexes.CreateOneAsync(
                 new CreateIndexModel<Hafiza>(
                     Builders<Hafiza>.IndexKeys.Ascending(h => h.KullaniciId).Descending(h => h.Olusturulma)),
+                cancellationToken: ct);
+
+            // İş takip fişleri 7 gün sonra kendiliğinden silinir (TTL index): koleksiyon sonsuza dek şişmesin.
+            await db.GetCollection<IsKaydi>(MongoIsDeposu.KoleksiyonAdi).Indexes.CreateOneAsync(
+                new CreateIndexModel<IsKaydi>(
+                    Builders<IsKaydi>.IndexKeys.Ascending(i => i.Olusturulma),
+                    new CreateIndexOptions { ExpireAfter = TimeSpan.FromDays(7) }),
                 cancellationToken: ct);
 
             // Oturum başına tek özet: unique index, upsert'in çift kayıt üretmesini engeller

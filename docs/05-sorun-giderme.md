@@ -106,6 +106,20 @@ Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içe
 **Kök neden:** Visual Studio sürecinin `APPDATA` değeri bu makinede doğrulanmadı. Tanı bilgisi bunu gösterir. Kök nedeni bulmadan da yedek dosya yeterlidir.
 **Ders:** Aynı kod iki farklı başlatma yolunda farklı davranıyorsa fark, kodda değil **sürecin ortamındadır** (ortam değişkenleri, kullanıcı, çalışma klasörü). Hata mesajına ortamı yazdırmak teşhisi dakikalara indirir.
 
+### 15. RabbitMQ kapalıyken API 70+ saniye asılı kalıyor, iş sonsuza dek `Bekliyor`
+**Belirti:** RabbitMQ durmuşken `POST /api/sohbet` cevap vermiyor (istemci zaman aşımına uğruyor). Takip fişi `Bekliyor` kalıyor ve hiç işlenmiyor.
+**Neden:** Kuyruk istemcisi (MassTransit) broker'a bağlanamayınca çok uzun bekler. Fiş zaten yazılmıştı ama hiç kuyruğa gidemedi ve kimse onu `Hata` yapmadı: sahipsiz kayıt.
+**Çözüm:** `IsServisi` gönderime **5 sn sınır** koyar (`WaitAsync`), başarısız olursa fişi `Hata` yapar, API **503** döner. İki test eklendi. RabbitMQ geri gelince API ve Worker kendiliğinden yeniden bağlanır.
+**Ders:** "Dış sisteme giden her çağrının bir zaman sınırı olmalı." Canlıda kapatıp denemeden bu kusur görünmezdi (unit testler geçiyordu).
+
+### 16. Panelde/sayaçlarda sayı "yanlış" görünüyor (örn. mesaj gönderdim ama Ready 0)
+**Neden:** RabbitMQ yönetim paneli ve API'si istatistikleri **birkaç saniyede bir** yeniler. Hemen baktığında eski değeri görürsün (Aşama 9 testinde kuyruk önce `HAZIR 0`, 6 sn sonra `HAZIR 1` gösterdi).
+**Çözüm:** Sayfayı yenile / 5-10 sn bekle ya da sunucudan sor: `docker compose exec rabbitmq rabbitmqctl list_queues name messages_ready consumers`.
+
+### 17. Sorular `Bekliyor` kalıyor, cevap gelmiyor
+**Neden (çoğu zaman):** **Worker çalışmıyor.** API sadece soruyu kuyruğa bırakır; cevabı Worker üretir.
+**Çözüm:** `dotnet run --project src/Asistan.Worker` (ayrı bir terminal) ya da Visual Studio'da *Multiple startup projects*. Kuyrukta `tüketici` sayısı 0 ise Worker kapalıdır (`rabbitmqctl list_queues`). Worker açılınca bekleyen sorular kendiliğinden işlenir, hiçbiri kaybolmaz.
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -124,6 +138,10 @@ Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içe
 | Asistan beni hatırlamıyor (hafıza boş) | Hafıza çıkarma hata verdi (örn. `hizli` modeli kredi/ad sorunu) veya model "YOK" dedi | API loglarında `Hafıza çıkarılamadı` uyarısına bak; `GET /api/hafiza/{kullaniciId}` ile içeriği kontrol et; LiteLLM'e `"model":"hizli"` ile doğrudan istek at |
 | Özet oluşmuyor | Henüz eşik aşılmadı (varsayılan 20 özetlenmemiş mesaj) | Denemek için eşiği küçült (`04-komut-rehberi.md`, "Hafıza ayarlarını geçici değiştirmek") |
 | `hizli` model hatası | `config.yaml`'daki `claude-haiku-5-5` adı hesabında yok | Model adını Anthropic dokümantasyonundan kontrol et, `docker compose restart litellm` |
+| Fiş `Isleniyor` kalıyor, `denemeSayisi` artıyor | Worker model/ağ hatası alıyor ve yeniden deniyor | Worker logu, `docker compose ps` (litellm), LiteLLM'e doğrudan istek; ~2 dk sonra `Hata` olur |
+| Fiş `Hata` | 5 deneme de başarısız (model kapalı vb.) | Worker logunda gerçek neden; mesaj `ai-istegi_error` kuyruğunda (panelden incelenebilir) |
+| Worker açılışta `Eksik ayar(lar): RabbitMq:...` | Worker'ın kasası/yedek dosyası boş | #13/#14: Worker API ile **aynı kasayı** kullanır; yoksa `src/Asistan.Worker/appsettings.Local.json` |
+| `PRECONDITION_FAILED` (RabbitMQ) | Aynı adlı kuyruk farklı ayarlarla önceden oluşturulmuş | Kuyruğu panelden sil, uygulamayı yeniden başlat |
 | `Address already in use` (5254) | Önceki `dotnet run` hâlâ çalışıyor | Eski pencereyi kapat veya portu kullanan işlemi bul |
 | `Database ... does not exist` / tablo yok | Migration uygulanmamış | `dotnet ef database update ...` |
 | Migration `Build failed` | Kodda derleme hatası var | Önce `dotnet build` ile düzelt |

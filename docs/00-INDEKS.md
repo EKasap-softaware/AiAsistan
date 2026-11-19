@@ -34,16 +34,23 @@ Kullanıcı ─► API ─► RabbitMQ kuyruğu ─► Worker ─► LiteLLM ─
                                           └─ PostgreSQL (kullanıcılar, abonelikler)
 ```
 
-Şu an (Aşama 8) çalışan kısım:
+Şu an (Aşama 9) çalışan kısım:
 
 ```
-Kullanıcı ─► API ─► SohbetServisi ─► LiteLLM ─► Claude        (senkron, kuyruk yok)
-                       ├─► MongoDB: önce hafıza, özet ve ham mesajlar okunur; sonra soru + cevap kaydedilir
-                       └─► 'hizli' model (Haiku): oturum özetleme + kalıcı bilgi çıkarma
-             └────► KullaniciServisi ─► PostgreSQL
+POST /api/sohbet ─► API ─► takip fişi (MongoDB "isler") + kuyruğa bırak ─► 202 + isId   (<0.3 sn, cevap beklemez)
+                                  │
+                           RabbitMQ "ai-istegi"
+                                  │
+                                Worker ─► bağlamı kur (MongoDB: hafıza, özet, mesajlar)
+                                  │       ─► LiteLLM ─► Claude
+                                  │       ─► soru + cevabı MongoDB'ye yaz, fişi "Tamamlandi" yap
+                                  └─► RabbitMQ "sohbet-tamamlandi" ─► Worker ─► özetleme + kalıcı hafıza ("hizli" model)
+
+GET /api/isler/{isId} ─► fişin durumu ve cevap       (kullanıcı cevabı buradan alır)
+POST /api/kullanicilar ─► KullaniciServisi ─► PostgreSQL
 ```
 
-Kuyruk ve Worker **henüz yok**: Aşama 9-11'de gelecek. (MongoDB'ye sohbet kaydı Aşama 7'de, hafıza Aşama 8'de eklendi.)
+LangFlow, CD, Skills ve MCP **henüz yok**: Aşama 10-11'de gelecek. (Kuyruk ve Worker Aşama 9'da eklendi.)
 
 ## Aşama durumu
 
@@ -52,11 +59,11 @@ Kuyruk ve Worker **henüz yok**: Aşama 9-11'de gelecek. (MongoDB'ye sohbet kayd
 | 1 | Solution iskeleti | Bitti |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | Bitti |
 | 3 | EF Core + `/api/kullanicilar` | Bitti |
-| 4 | Unit testler | Bitti (şu an 45 test) |
+| 4 | Unit testler | Bitti (şu an 60 test) |
 | 5 | CI (GitHub Actions) | Dosya hazır, Actions sekmesinden doğrulanmalı |
 | 6 | LiteLLM + `/api/sohbet` | Bitti (Claude'dan gerçek cevap alındı) |
 | 7 | MongoDB sohbet geçmişi | Bitti (18 test, gerçek MongoDB'de doğrulandı) |
 | 8 | AI Memory | Bitti (kısa + uzun süreli hafıza, gerçek Claude ile doğrulandı) |
-| 9 | RabbitMQ + Worker | Yok |
+| 9 | RabbitMQ + Worker | Bitti (API 202 döner, Worker işler; Worker/model/RabbitMQ çökme senaryoları gerçek sistemde denendi) |
 | 10 | LangFlow | Yok |
 | 11 | CD + Skills + MCP | Yok |

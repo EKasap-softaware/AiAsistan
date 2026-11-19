@@ -142,7 +142,7 @@ var cevap = await servis.SorAsync(...);   // beklerken sunucu başka istekleri i
 
 | Tür | Neyi sınar | Hız | Projede |
 |---|---|---|---|
-| Unit | Tek sınıf, bağımlılıklar sahte | ms | 45 test var |
+| Unit | Tek sınıf, bağımlılıklar sahte | ms | 60 test var |
 | Integration | Gerçek DB/HTTP ile birkaç parça | sn | Yok (ileride) |
 | End-to-end | Tüm sistem | dk | Yok |
 
@@ -317,20 +317,61 @@ Neden "yeni 10'u ham bırak"? Son birkaç mesajdaki ayrıntı ("Peki ya Transien
 **Bilinen sınırlar (bilerek basit tuttuk):**
 - Uzun süreli hafıza **anlamsal arama yapmaz**: kullanıcının en yeni 20 hafızası hep gider. Gerçek sistemlerde soruyla ilgili olanlar **embedding + vektör arama** (MongoDB Atlas Vector Search, pgvector, Qdrant) ile seçilir. Anthropic'in embedding modeli yok, o yüzden ayrı bir sağlayıcı gerekirdi.
 - Çelişen bilgi ("artık Java öğreniyorum") eskisini **güncellemez**; ikisi de durur, kullanıcı silebilir.
-- Özetleme ve çıkarma **senkron**: her soruda 1-2 ekstra ucuz model çağrısı (gecikme + maliyet). Aşama 9'da Worker'a taşınacak.
+- Özetleme ve çıkarma her soruda 1-2 ekstra ucuz model çağrısı demektir (maliyet). Aşama 9'dan beri bunlar **Worker'da ayrı bir kuyruk adımı** (`sohbet-tamamlandi`), yani kullanıcının cevabını geciktirmez; maliyet yine de var.
 - Aynı oturuma aynı anda iki istek gelirse özetleme yarışabilir (kuyruk bunu da çözer).
 - Özet ve hafıza kalitesi `hizli` modelin kalitesine bağlı.
 
 ---
 
-## 15. Henüz yazılmamış ama planda olanlar
+## 15. RabbitMQ: bu projede nasıl çalışıyor? (Aşama 9)
+
+**Nedir:** Bir mesaj aracısı (message broker). Bir program mesaj **bırakır**, başka bir program onu **sonra** alıp işler. İkisi birbirini beklemez ve tanımak zorunda kalmaz. Restoranda: garson siparişi **askıya asar**, aşçı kendi hızında alır.
+
+**Neden gerekli:** Claude'un cevabı 10-60 sn sürebilir. API bunu bekleseydi (1) HTTP isteği zaman aşımına uğrar, (2) aynı anda 1000 istek gelince sunucu ve LLM kotası boğulur, (3) LLM o an çökmüşse istek kaybolur. Kuyrukla: API soruyu bırakıp **0.3 sn'de 202 Accepted** döner; Worker kendi hızında işler; Worker çökse bile soru kuyrukta bekler.
+
+**Terimler ve projedeki karşılığı:**
+
+| Terim | Restoran | Projede |
+|---|---|---|
+| Producer | Siparişi asan garson | API (`MassTransitIsYayinci`) |
+| Queue | Sipariş askısı | `ai-istegi`, `sohbet-tamamlandi`, `ai-istegi-hata` |
+| Consumer | Aşçı | `AiIstegiConsumer` vb. (Worker) |
+| Ack | Aşçının "yaptım, fişi at" demesi | MassTransit, consumer hatasız bitince otomatik verir |
+| Takip fişi | Müşterinin eline verilen sipariş numarası | `IsKaydi` (`isId`), MongoDB `isler` |
+
+**Sipariş fişi neden ayrı?** Kuyruktaki mesaj **iletişimdir**, kullanıcının "siparişim ne durumda?" sorusunun cevabı değildir. O yüzden iki şey var: mesaj (`AiIstegi`, kuyrukta) ve takip fişi (`IsKaydi`, MongoDB'de, durumu: `Bekliyor` → `Isleniyor` → `Tamamlandi`/`Hata`).
+
+**Send mi Publish mi?** `Publish` mesajı bir **exchange**'e bırakır, ilgilenen kuyruklara dağıtılır. Hiçbir kuyruk bağlı değilse mesaj **sessizce kaybolur** ("not routed", RabbitMQ panelinde bunu gördün). `Send` ise **doğrudan bir kuyruğa** gönderir ve kuyruk yoksa oluşturur. API soruyu `Send` ile `queue:ai-istegi`'ne gönderir: Worker hiç çalışmamış olsa bile soru kaybolmaz.
+
+**At-least-once (en az bir kez) teslimat:** RabbitMQ mesajı **en az bir kez** teslim etmeyi garanti eder, **tam bir kez** garantisi vermez. Consumer mesajı alıp onay (ack) vermeden çökerse mesaj geri verilir; yani aynı mesaj iki kez gelebilir. Bu yüzden consumer **idempotent** olmalı. Bizde: `IslemeAlAsync` atomik olarak "bu iş hâlâ Bekliyor/Isleniyor mu?" diye bakar; `Tamamlandi` ise **atlar** (ve mesaj onaylanıp silinir). Yani aynı soru iki kez işlenmez.
+
+**Yeniden deneme (retry):** Model/ağ gibi **geçici** hatalarda Worker aynı mesajı 5 kez yeniden dener, bekleme süresi her seferinde artar (üstel geri çekilme: sunucu çökmüşken saniyede yüzlerce deneme yapıp onu daha da boğma). `ArgumentException` gibi "tekrar denesen de düzelmez" hatalar **denenmez**. Önemli: consumer hatayı **fırlatmalı**; yutarsa MassTransit "başarılı" sanıp mesajı siler.
+
+**Hata kuyruğu (`_error`) ve Fault:** 5 deneme de başarısız olunca (1) MassTransit asıl mesajı `ai-istegi_error` kuyruğuna taşır (**silmez**; sonradan incelenip yeniden gönderilebilir), (2) `Fault<AiIstegi>` yayınlar; `AiIstegiHataConsumer` takip fişini `Hata` yapar. Kullanıcı sonsuza dek `Isleniyor` görmez; gerçek neden yalnızca loga yazılır, kullanıcıya genel mesaj gösterilir.
+
+**İki aşamalı iş (neden `SohbetTamamlandi`?):** Cevap hazır olunca kullanıcıya hemen verilir; özetleme ve hafıza çıkarma (ekstra model çağrıları) **ayrı bir mesajla** arka plana atılır. Kullanıcı o işleri beklemez. Aşama 8'de bunlar HTTP isteğinin içindeydi.
+
+**Gerçek sistemde denenen üç senaryo:**
+| Senaryo | Sonuç |
+|---|---|
+| Worker kapalıyken soru gönderildi | API 202 (0.25 sn); kuyrukta 1 mesaj, 0 tüketici; fiş `Bekliyor`. Worker açılınca ~5 sn'de `Tamamlandi` |
+| LiteLLM (model) kapalıyken soru | 6 deneme (deneme sayısı 1→6), ~2 dk sonra `Hata`; mesaj `_error` kuyruğunda; kullanıcıya genel mesaj |
+| RabbitMQ kapalıyken soru | **İlk kodda API 70+ sn asılı kaldı ve fiş sahipsiz `Bekliyor` kaldı** (kusur). Düzeltme: 5 sn zaman aşımı, fiş `Hata`, API **503**. RabbitMQ açılınca API ve Worker kendiliğinden yeniden bağlandı |
+
+**Hâlâ var olan sınırlar (bilerek):**
+- **Outbox yok:** Fişi yazıp kuyruğa göndermek **iki ayrı iş**; ikisi arasında uygulama çökerse fiş `Bekliyor` kalır. Gerçek çözüm "transactional outbox".
+- **Kullanıcı cevabı polling ile alır** (belirli aralıklarla `GET /api/isler/{isId}`). Anlık itme için SignalR/webhook gerekir.
+- **Aynı oturuma aynı anda iki soru:** sıra garantisi yok (`ConcurrentMessageLimit = 4`).
+- **`_error` kuyruğunu yeniden işleme** aracı yok (RabbitMQ panelinden elle yapılır).
+- **Paylaşılan kasa:** API ve Worker aynı `user-secrets` kasasını kullanır (aynı `UserSecretsId`).
+
+---
+
+## 16. Henüz yazılmamış ama planda olanlar
 
 | Konu | Neden gerekli | Aşama |
 |---|---|---|
-| **RabbitMQ + Worker** | Claude 10-60 sn sürebilir; API kuyruğa atıp hemen 202 döner, Worker işler | 9 |
 | **LangFlow** | Karmaşık AI akışlarını (RAG, agent) görsel kurmak | 10 |
 | **CD, Skills, MCP** | Otomatik yayın; Claude'a tekrarlayan işleri öğretmek; Claude'u dış araçlara bağlamak | 11 |
-
-**RabbitMQ ana fikri:** Producer (API) mesajı bırakır, Consumer (Worker) alıp işler, `Ack` = "işledim". Mesaj en az bir kez işlenir, bu yüzden consumer **idempotent** yazılmalı (aynı mesaj iki kez gelse sonuç değişmemeli). Hata olursa üstel bekleme ile yeniden denenir, olmazsa `_error` kuyruğuna düşer.
 
 **Hafıza ana fikri:** Neyi, ne kadar göndereceğini yönetmek = bağlam penceresine en faydalı bilgiyi en az token'la sığdırma sanatı (maliyet + kalite).

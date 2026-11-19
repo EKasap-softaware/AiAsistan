@@ -16,7 +16,8 @@ cd C:\Users\emref\source\repos\KSP2\AiAsistan
 docker compose up -d                 # altyapıyı başlat
 dotnet build                         # derle
 dotnet test                          # testleri çalıştır
-dotnet run --project src/Asistan.Api --launch-profile http   # API'yi çalıştır
+dotnet run --project src/Asistan.Api --launch-profile http   # API'yi çalıştır (1. terminal)
+dotnet run --project src/Asistan.Worker                       # Worker'ı çalıştır (2. terminal). ONSUZ SORULAR İŞLENMEZ
 ```
 
 Bitirince:
@@ -125,14 +126,19 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/kullanicilar `
 # Kullanıcıyı getir
 Invoke-RestMethod http://localhost:5254/api/kullanicilar/1
 
-# Claude'a sor (LiteLLM + kredi gerekir). Cevapta oturumId gelir.
+# Claude'a sor. ARTIK ASENKRON: API hemen 202 döner, cevap Worker'dan gelir (Worker çalışıyor olmalı!)
 $r = Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
   -ContentType 'application/json' `
   -Body '{"kullaniciId":"1","soru":"DI nedir?"}'
-$r.cevap
+$r                                   # isId, oturumId, durum=Bekliyor, durumUrl
+
+# Cevabı almak için durumu sor (hazır olana kadar tekrarla)
+do { Start-Sleep 2; $i = Invoke-RestMethod "http://localhost:5254/api/isler/$($r.isId)"; $i.durum }
+until ($i.durum -in "Tamamlandi","Hata")
+$i.cevap
 
 # Aynı sohbete devam et (oturumId'yi geri gönder) ve geçmişi oku
-Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
+$r2 = Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet `
   -ContentType 'application/json' `
   -Body (@{ kullaniciId = "1"; soru = "Peki Scoped?"; oturumId = $r.oturumId } | ConvertTo-Json)
 Invoke-RestMethod "http://localhost:5254/api/sohbet/$($r.oturumId)/mesajlar"
@@ -144,6 +150,22 @@ Invoke-RestMethod -Method Delete http://localhost:5254/api/hafiza/1             
 ```
 
 Daha kolayı: API çalışırken `http://localhost:5254/scalar/v1` adresini tarayıcıda aç.
+
+### Kuyruğu izlemek ve sistemi bilerek bozup davranışını görmek
+```powershell
+# Kuyruklar, bekleyen mesaj ve tüketici sayısı (panel: http://localhost:15672 → Queues and Streams)
+docker compose exec rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers
+
+# İş takip fişleri (MongoDB):
+docker compose exec mongo mongosh -u asistan -p <MONGO_PASSWORD> --authenticationDatabase admin asistan --eval "db.isler.find().sort({olusturulma:-1}).limit(5)"
+```
+Deneyler (Worker + API çalışırken; her biri bir sonuç öğretir):
+| Yap | Sonra bir soru gönder, ne görürsün? |
+|---|---|
+| Worker'ı kapat (Ctrl+C) | API yine 202; fiş `Bekliyor`, kuyrukta 1 mesaj, tüketici 0. Worker'ı açınca işlenir |
+| `docker compose stop litellm` | Fiş `Isleniyor`, `denemeSayisi` 1→6 artar (~2 dk), sonra `Hata`; `ai-istegi_error` kuyruğunda 1 mesaj. `docker compose start litellm` ile geri aç |
+| `docker compose stop rabbitmq` | API 5 sn sonra **503**; fiş `Hata`. `docker compose start rabbitmq` ile geri aç, birkaç sn sonra her şey toparlanır |
+> **Panel ve sayaçlar birkaç sn gecikmeli yenilenir.** "0" gördüğünde sayfayı yenile veya birkaç sn bekle, ya da `rabbitmqctl` ile sunucuya sor.
 
 ### Hafıza ayarlarını geçici değiştirmek (özetlemeyi hızlı görmek için)
 Normalde özetleme 20 mesajdan sonra başlar. Denemek için eşiği ortam değişkeniyle küçültebilirsin (sadece o terminal oturumunda geçerli, dosyaya yazılmaz):
@@ -199,7 +221,7 @@ git diff --staged   # eklenen satırlarda şifre/anahtar var mı?
 ```powershell
 docker compose ps                                  # 4 servis Up (3'ü healthy)
 dotnet build                                       # 0 hata, 0 uyarı
-dotnet test                                        # 45 test geçti
+dotnet test                                        # 60 test geçti
 Invoke-RestMethod http://localhost:5254/openapi/v1.json   # API çalışıyorsa JSON döner
 ```
 

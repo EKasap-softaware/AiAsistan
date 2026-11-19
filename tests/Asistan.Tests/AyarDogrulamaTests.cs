@@ -17,7 +17,10 @@ public class AyarDogrulamaTests
         ("ConnectionStrings:Sql", "Host=localhost;Database=x"),
         ("Mongo:Url", "mongodb://localhost:27017"),
         ("LiteLlm:BaseUrl", "http://localhost:4000"),
-        ("LiteLlm:Key", "anahtar")
+        ("LiteLlm:Key", "anahtar"),
+        ("RabbitMq:Host", "localhost"),
+        ("RabbitMq:Username", "kullanici"),
+        ("RabbitMq:Password", "sifre")
     ];
 
     [Fact]
@@ -29,6 +32,7 @@ public class AyarDogrulamaTests
         hata.Message.Should()
             .Contain("ConnectionStrings:Sql").And.Contain("Mongo:Url")
             .And.Contain("LiteLlm:BaseUrl").And.Contain("LiteLlm:Key")
+            .And.Contain("RabbitMq:Host").And.Contain("RabbitMq:Username").And.Contain("RabbitMq:Password")
             .And.Contain("Development").And.Contain("user-secrets");
     }
 

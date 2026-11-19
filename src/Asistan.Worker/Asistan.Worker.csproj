@@ -4,7 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>dotnet-Asistan.Worker-f09b3917-c361-4746-aeb0-e7d2e899c22a</UserSecretsId>
+    <!-- API ile AYNI kasa (user-secrets): bağlantı bilgilerini iki yerde ayrı ayrı saklamayalım. -->
+    <UserSecretsId>04a1aa68-87b8-411c-8de6-a8cf2e24cee0</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

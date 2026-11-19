@@ -9,13 +9,17 @@ Content-Type: application/json
 ### Kullanıcıyı getir (200, yoksa 404)
 GET {{host}}/api/kullanicilar/1
 
-### Claude'a soru sor: yeni sohbet başlar, cevapta oturumId gelir
+### Claude'a soru sor: API HEMEN 202 döner. Cevap Worker'dan gelir (Worker çalışıyor olmalı!)
+### Yanıttaki isId ve oturumId'yi aşağıya yapıştır.
 POST {{host}}/api/sohbet
 Content-Type: application/json
 
 { "kullaniciId": "1", "soru": "Merhaba, ben Emre. C# öğreniyorum." }
 
-### Aynı sohbete devam et (yukarıdaki cevapta gelen oturumId'yi yapıştır). Asistan önceki mesajları hatırlar.
+### İşin durumu: Bekliyor -> Isleniyor -> Tamamlandi (cevap burada). Birkaç kez çalıştır.
+GET {{host}}/api/isler/BURAYA-IS-ID
+
+### Aynı sohbete devam et (oturumId'yi yapıştır). Asistan önceki mesajları hatırlar.
 POST {{host}}/api/sohbet
 Content-Type: application/json
 

@@ -4,19 +4,20 @@
 
 > **Öğrenme rehberi:** her dosyanın ne işe yaradığı, kavramlar, komutlar ve sorun giderme için [docs/00-INDEKS.md](docs/00-INDEKS.md) dosyasından başla.
 
-## Şu an ne var? (Aşama 8/11)
+## Şu an ne var? (Aşama 9/11)
 
 | Aşama | Konu | Durum |
 |---|---|---|
 | 1 | Solution iskeleti | ✅ |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | ✅ |
 | 3 | EF Core + `/api/kullanicilar` | ✅ |
-| 4 | Unit testler | ✅ (45 test) |
+| 4 | Unit testler | ✅ (60 test) |
 | 5 | CI (GitHub Actions) | ✅ dosya hazır, Actions sekmesinden doğrulanacak |
 | 6 | LiteLLM + `/api/sohbet` | ✅ Claude cevap veriyor |
 | 7 | MongoDB sohbet geçmişi | ✅ soru-cevap kaydediliyor |
 | 8 | AI Memory (özetleme + kalıcı hafıza) | ✅ asistan konuşmayı ve kullanıcıyı hatırlıyor |
-| 9-11 | Kuyruk, LangFlow, CD | ❌ |
+| 9 | RabbitMQ + Worker (API anında 202, cevabı Worker üretir) | ✅ |
+| 10-11 | LangFlow, CD | ❌ |
 
 ## Klasörler
 
@@ -24,7 +25,7 @@
 - `src/Asistan.Application`: iş kuralları ve arayüzler
 - `src/Asistan.Infrastructure`: veritabanı ve LiteLLM ile gerçek konuşma
 - `src/Asistan.Api`: dışarıya açılan web API
-- `src/Asistan.Worker`: arka plan işçisi (şimdilik boş, Aşama 9'da dolacak)
+- `src/Asistan.Worker`: arka plan işçisi: kuyruktaki soruları alıp Claude'a sorar, özetleme ve hafıza işini yapar
 - `tests/Asistan.Tests`: otomatik testler
 - `litellm/config.yaml`: hangi AI modelinin kullanılacağı
 
@@ -34,8 +35,11 @@
 Copy-Item .env.example .env      # sonra .env içindeki değerleri doldur
 docker compose up -d             # altyapıyı başlat
 dotnet test                      # testleri çalıştır
-dotnet run --project src/Asistan.Api --launch-profile http
+dotnet run --project src/Asistan.Api --launch-profile http      # 1. terminal: API
+dotnet run --project src/Asistan.Worker                          # 2. terminal: Worker (soruları o işler!)
 ```
+
+> **Worker çalışmıyorsa** sorular kaybolmaz, kuyrukta bekler ve işler `Bekliyor` kalır; Worker açılınca işlenir. Visual Studio'da ikisini birden başlatmak için: Solution'a sağ tık → *Configure Startup Projects* → *Multiple startup projects* → `Asistan.Api` ve `Asistan.Worker` için *Start*.
 
 API açılınca: http://localhost:5254/scalar/v1 (Visual Studio'da `http` veya `https` profiliyle F5 bunu kendiliğinden açar)
 

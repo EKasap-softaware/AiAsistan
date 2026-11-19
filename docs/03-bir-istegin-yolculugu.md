@@ -35,63 +35,73 @@ Yanıt (201):
 
 ---
 
-## B. Yolculuk 2: Claude'a soru sorma (`POST /api/sohbet`)
+## B. Yolculuk 2: Claude'a soru sorma (`POST /api/sohbet`, Aşama 9'dan beri **asenkron**)
 
 İstek:
 ```json
 { "kullaniciId": "1", "soru": "Dependency Injection nedir?", "oturumId": "(isteğe bağlı)" }
 ```
 
+Bu yolculuk artık **iki program** arasında geçer: API (garson) ve Worker (mutfak). Aralarında RabbitMQ (askı).
+
+**Bölüm 1: API (<0.3 sn, cevap beklemez)**
 ```
 1. İstemci ──► API :5254 ──► SohbetController.Sor
-2. DI: ISohbetServisi ──► SohbetServisi (ILlmIstemcisi, IMesajDeposu, IHafizaServisi takılır)
-3. SohbetServisi.SorAsync
-      a. Soru boş mu?                              ──► evet: ArgumentException (LLM çağrılmaz)
-      a2. oturumId yoksa yeni bir tane üret (Guid)
-      b. IHafizaServisi.BaglamKurAsync(kullaniciId, oturumId, soru):
-           ├─ MongoDB "hafizalar"      : kullanıcının kalıcı bilgileri (en yeni 20)
-           ├─ MongoDB "oturumOzetleri" : bu oturumun özeti (varsa)
-           └─ MongoDB "mesajlar"       : özete girmemiş ham mesajlar
-         ──► [ system: temel prompt + "Kullanıcı hakkında bildiklerin: ..." + "Önceki kısmın özeti: ..."
-               (user/assistant): ham mesajlar ...
-               user: yeni soru ]
-      c. llm.TamamlaAsync(baglam)  (model varsayılan: "akilli")
-4. LiteLlmIstemcisi
-      POST http://localhost:4000/v1/chat/completions
-      Authorization: Bearer <LiteLlm:Key>
-      { "model": "akilli", "messages": [ {role, content}, ... ] }
-5. LiteLLM (Docker)
-      a. Master key'i doğrular
-      b. config.yaml: "akilli" ──► anthropic/claude-sonnet-5-5
-      c. ANTHROPIC_API_KEY ile Anthropic'e iletir
-6. Claude cevaplar ──► LiteLLM ──► OpenAI formatında JSON:
-      { "choices": [ { "message": { "content": "..." } } ] }
-7. LiteLlmIstemcisi: choices[0].message.content'i okur
-7b. SohbetServisi: soru ve cevabı IMesajDeposu ile kaydeder
-      MongoMesajDeposu ──► InsertMany ──► MongoDB "mesajlar" koleksiyonu
-      (LLM hata verdiyse buraya hiç gelinmez, kayıt yapılmaz)
-7c. IHafizaServisi.SohbetSonrasiAsync (hata verse de kullanıcının cevabını bozmaz):
-      a. Özetlenmemiş mesaj sayısı eşiği (varsayılan 20) aştı mı?
-           evet ──► en yeni 10 mesaj hariç eskileri "hizli" modelle özetle
-                    ──► MongoDB "oturumOzetleri" (upsert)
-      b. "hizli" modele sor: "kullanıcı hakkında kalıcı yeni bilgi var mı?"
-           varsa (ve YOK değilse, kısaysa, yeniyse) ──► MongoDB "hafizalar"
-8. Controller: 200 OK  { "cevap": "...", "oturumId": "..." }
-      HttpRequestException ──► 502 Bad Gateway
+2. IsServisi.KuyrugaAlAsync
+      a. Kullanıcı/soru boş mu?  ──► evet: 400 (hiçbir şey yazılmaz)
+      b. isId üret (Guid), oturumId yoksa üret
+      c. MongoDB "isler": takip fişi yaz  { durum: "Bekliyor" }          ◄── ÖNCE fiş
+      d. RabbitMQ "ai-istegi" kuyruğuna AiIstegi mesajını gönder (Send)    ◄── SONRA kuyruk
+         (5 sn içinde olmazsa: fişi "Hata" yap ──► 503)
+3. Controller: 202 Accepted  { isId, oturumId, durum: "Bekliyor", durumUrl }
 ```
 
-**Durum:** Zincir uçtan uca çalışıyor. Kredi yüklendikten sonra `/api/sohbet`'e "Dependency Injection nedir?" sorusu gönderildi, Claude'dan Türkçe cevap geldi (HTTP 200). Boş soru ise 400 döndü.
+**Bölüm 2: Worker (kendi hızında)**
+```
+4. RabbitMQ ──► AiIstegiConsumer (kuyruk: ai-istegi)
+      a. IslemeAlAsync(isId): atomik "al"  { durum: "Isleniyor", deneme+1 }
+           iş zaten Tamamlandi/Hata/yok ise ──► ATLA, mesajı onayla (idempotent)
+      b. SohbetServisi.SorAsync:
+           ├─ HafizaServisi.BaglamKurAsync   (MongoDB: hafızalar + özet + ham mesajlar)
+           ├─ LiteLlmIstemcisi ──► LiteLLM ──► Claude        (10-60 sn sürebilir)
+           └─ MongoDB "mesajlar": soru ve cevabı kaydet
+      c. TamamlaAsync: fiş { durum: "Tamamlandi", cevap: "..." }       ◄── kullanıcı artık görebilir
+      d. RabbitMQ "sohbet-tamamlandi" kuyruğuna SohbetTamamlandi gönder
+      (hata fırlarsa: yeniden dene, bkz. aşağıdaki "Hata yolu")
+5. SohbetTamamlandiConsumer (kuyruk: sohbet-tamamlandi)  ── arka plan işi
+      HafizaServisi.SohbetSonrasiAsync:
+         ├─ eşik aşıldıysa eski mesajları "hizli" modelle özetle ──► "oturumOzetleri"
+         └─ kullanıcı hakkında kalıcı bilgi var mı? ──► "hafizalar"
+```
+
+**Bölüm 3: kullanıcı cevabı alır (polling)**
+```
+6. İstemci belirli aralıklarla:  GET /api/isler/{isId}
+      { durum: "Bekliyor" }  ──►  { durum: "Isleniyor" }  ──►  { durum: "Tamamlandi", cevap: "..." }
+```
+
+**Hata yolu (model/ağ çökerse):**
+```
+Worker denemesi başarısız ──► 5 kez yeniden dene (bekleme süresi artar: ~11, 17, 22, 34 sn)
+   hâlâ başarısızsa:
+     ├─ asıl mesaj "ai-istegi_error" kuyruğuna TAŞINIR (silinmez, sonra incelenir)
+     ├─ Fault<AiIstegi> yayınlanır ──► AiIstegiHataConsumer: fiş { durum: "Hata" }
+     └─ gerçek neden SADECE loga yazılır; kullanıcı "Soru işlenemedi, lütfen tekrar dene." görür
+```
+
+**Üç gerçek senaryo (hepsi canlı sistemde denendi):**
+| Senaryo | Ne oldu |
+|---|---|
+| Worker kapalıyken soru | API yine 202 (0.25 sn). Soru kuyrukta bekledi. Worker açılınca ~5 sn'de cevap geldi |
+| LiteLLM kapalıyken soru | 6 deneme, ~2 dk, sonunda `Hata`, mesaj `_error` kuyruğunda |
+| RabbitMQ kapalıyken soru | API **503** (5 sn). RabbitMQ açılınca her şey kendiliğinden toparlandı |
 
 **Bu akışın zayıf noktaları (bilerek, ileriki aşamalarda çözülecek):**
-- **Senkron:** Cevap 10-60 sn sürebilir, bağlantı o sürece bekler → Aşama 9'da kuyruk.
-- **Özetleme ve hafıza çıkarma senkron:** her soruda 1-2 ekstra `hizli` model çağrısı (gecikme + maliyet) → Aşama 9'da Worker'a taşınacak.
-- **Uzun süreli hafıza anlamsal değil:** soruyla ilgili olanlar seçilmiyor, kullanıcının en yeni 20 hafızası hep gidiyor (embedding/vektör arama yok). Çelişen bilgi eskisini güncellemez; kullanıcı `DELETE /api/hafiza/...` ile siler.
-- **Aynı oturuma aynı anda iki istek** gelirse özetleme yarışabilir.
-- **`kullaniciId` sadece kayıt için saklanıyor**; kimlik doğrulama/yetkilendirme yok (herkes her oturumu okuyabilir).
-- **Kayıt başarısız olursa** (MongoDB kapalı) kullanıcı cevabı değil hata alır; cevap boşa gitmiş olur (kuyruk + yeniden deneme ile Aşama 9'da düzelecek).
-- LiteLLM hataları 5xx olunca controller hepsini 502 yapar; ayrım yok.
-
----
+- **Polling:** kullanıcı cevabı kendisi sormak zorunda (anlık itme için SignalR/webhook gerekir).
+- **Outbox yok:** fişi yazıp kuyruğa göndermek iki ayrı iş; ikisi arasında uygulama çökerse fiş `Bekliyor` kalır.
+- **Uzun süreli hafıza anlamsal değil:** soruyla ilgili olanlar seçilmiyor, kullanıcının en yeni 20 hafızası hep gidiyor (embedding yok).
+- **`kullaniciId` sadece kayıt için saklanıyor**; kimlik doğrulama yok (herkes her oturumu ve hafızayı okuyabilir).
+- **Aynı oturuma aynı anda iki soru:** sıra garantisi ve özetleme yarışı olabilir.
 
 ## C. Aşama günlüğü: neyi, neden, hangi sırayla yaptık
 
@@ -140,6 +150,15 @@ Yanıt (201):
 - **Test yaklaşımı:** `HafizaAyarlari`'yı küçük değerlerle (pencere 2, eşik 4) test ettik. Mutasyon kontrolü: özetleme sınırını bilerek bozunca 3 test kırıldı. Testler 18 → 37.
 - **Gerçek Claude ile doğrulama** (geçici olarak pencere 2, eşik 4 ile): (1) "Ben Emre, C# öğreniyorum, hedefim web API" → hafızaya "Kullanıcının adı Emre; C# öğrenmeye yeni başladı ve hedefi web API yazmak." yazıldı. (2) Dört soru sonra özet oluştu (`ozetlenenMesajSayisi: 8`); "ilk mesajımda ne söylemiştim?" sorusuna doğru cevap geldi. (3) Aynı kullanıcı **yeni oturumda** "adımı hatırlıyor musun?" dedi, cevap "adın Emre, C# öğreniyorsun". (4) **Başka kullanıcı** aynı soruyu sorunca bilgi sızmadı ("hatırlayamıyorum"). (5) Hafıza silme çalıştı; başka kullanıcının silme denemesi 404 döndü ve hafıza yerinde kaldı. Test verileri sonra temizlendi.
 
+### Aşama 9: RabbitMQ + Worker · `feat: RabbitMQ + Worker (asenkron sohbet, 202 + takip fisi)`
+- **Lisans kontrolü:** MassTransit 8.5.12 paket künyesinde `Apache-2.0` (ücretsiz), `net9.0` destekli. 9+ ticari olduğu için `8.*` seçildi.
+- Domain: `IsKaydi` + `IsDurumu`. Application: `Kuyruk/` (sözleşmeler, `IsServisi`), `AddApplication`. Infrastructure: `MongoIsDeposu` (atomik `IslemeAlAsync`, TTL index), `MassTransitIsYayinci`, `AddKuyruk`. Worker: 3 consumer + kuyruk/retry tanımı (şablon `Worker.cs` silindi). Api: `SohbetController` artık 202 döner, yeni `IslerController`.
+- `SohbetServisi`'nden özetleme/hafıza çıkarma işi çıkarıldı (Worker'da ayrı adım).
+- API ve Worker aynı kasayı kullanır (aynı `UserSecretsId`); Worker için de yedek `appsettings.Local.json` oluşturuldu.
+- **Test:** 45 → 60 (`IsServisiTests`, `WorkerConsumerTests`). Consumer'lar RabbitMQ olmadan, sahte `ConsumeContext` ile test edildi.
+- **Canlı doğrulama (3 senaryo, bkz. Yolculuk 2):** Worker kapalı, LiteLLM kapalı, RabbitMQ kapalı. Üçüncüsü **gerçek bir kusur buldu**: API 70+ sn asılı kalıyor ve fiş sonsuza dek `Bekliyor` kalıyordu. Düzeltme: gönderime 5 sn sınır (`WaitAsync`), başarısızsa fiş `Hata`, API 503; iki test eklendi. Düzeltilmiş kodla yeniden denendi: 503 (5.1 sn), RabbitMQ geri gelince her şey toparlandı.
+- Test verileri ve `_error` kuyruğu temizlendi.
+
 ### Temizlik · `docs: README ve gercek .http ornekleri`, `docs: ogrenme rehberi`
 - Şablondan kalan hatalı `.http` dosyası gerçek isteklerle değiştirildi, README ve bu rehber eklendi.
 
@@ -149,7 +168,6 @@ Yanıt (201):
 
 | Aşama | Yapılacak | Çıktı |
 |---|---|---|
-| 9 | RabbitMQ + MassTransit + Worker | API anında 202, cevap Worker'dan |
 | 10 | LangFlow RAG akışı | Asistan dokümanlardan cevap veriyor |
 | 11 | Dockerfile, CD, skill, MCP | `main`'e merge = otomatik yayın |
 

@@ -1,3 +1,4 @@
+using Asistan.Application.Kuyruk;
 using Asistan.Application.Sohbet;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,25 +9,27 @@ public record SoruDto(string KullaniciId, string Soru, string? OturumId = null);
 
 [ApiController]
 [Route("api/sohbet")]
-public class SohbetController(ISohbetServisi servis) : ControllerBase
+public class SohbetController(IIsServisi isler, ISohbetServisi sohbet) : ControllerBase
 {
-    // Aşama 7: cevap + oturumId döner, soru-cevap MongoDB'ye kaydedilir.
-    // Aşama 9'da kuyruğa taşınacak (202 Accepted).
+    // Aşama 9: soru kuyruğa bırakılır, API HEMEN döner (202 Accepted). Cevap Worker'dan gelir.
+    // Kullanıcı durumUrl'e (GET /api/isler/{isId}) bakarak cevabı alır.
     [HttpPost]
     public async Task<IActionResult> Sor(SoruDto dto, CancellationToken ct)
     {
         try
         {
-            var sonuc = await servis.SorAsync(dto.KullaniciId, dto.Soru, dto.OturumId, ct);
-            return Ok(new { cevap = sonuc.Cevap, oturumId = sonuc.OturumId });
+            var is_ = await isler.KuyrugaAlAsync(dto.KullaniciId, dto.Soru, dto.OturumId, ct);
+            var durumUrl = $"/api/isler/{is_.Id}";
+            return Accepted(durumUrl, new { isId = is_.Id, oturumId = is_.OturumId, durum = is_.Durum.ToString(), durumUrl });
         }
         catch (ArgumentException ex)
         {
             return BadRequest(new { hata = ex.Message });
         }
-        catch (HttpRequestException ex)
+        catch (KuyrukHatasi)
         {
-            return StatusCode(StatusCodes.Status502BadGateway, new { hata = "LLM'e ulaşılamadı: " + ex.Message });
+            // RabbitMQ'ya ulaşılamadı: sunucu tarafı geçici sorun (503), istemci hatası değil.
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { hata = "Soru şu an kuyruğa alınamadı, biraz sonra tekrar dene." });
         }
     }
 
@@ -34,7 +37,7 @@ public class SohbetController(ISohbetServisi servis) : ControllerBase
     [HttpGet("{oturumId}/mesajlar")]
     public async Task<IActionResult> Mesajlar(string oturumId, [FromQuery] int adet = 20, CancellationToken ct = default)
     {
-        var liste = await servis.MesajlariGetirAsync(oturumId, adet, ct);
+        var liste = await sohbet.MesajlariGetirAsync(oturumId, adet, ct);
         return Ok(liste.Select(m => new { m.Rol, m.Icerik, m.Olusturulma }));
     }
 }

@@ -86,19 +86,14 @@ public class SohbetServisiTests
     }
 
     [Fact]
-    public async Task SorAsync_Basarili_MesajlariKaydettiktenSonraSohbetSonrasiniCalistirir()
+    public async Task SorAsync_Basarili_OzetlemeVeHafizaCikarmayiKENDISICalistirmaz_BuIsWorkerdaAyriBirAdim()
     {
         LlmCevapVerir("Cevap");
-        var sira = new List<string>();
-        _depo.Setup(d => d.KaydetAsync(It.IsAny<IEnumerable<Mesaj>>(), It.IsAny<CancellationToken>()))
-             .Callback(() => sira.Add("kaydet")).Returns(Task.CompletedTask);
-        _hafiza.Setup(h => h.SohbetSonrasiAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-               .Callback(() => sira.Add("sohbetSonrasi")).Returns(Task.CompletedTask);
 
         await _servis.SorAsync("kullanici-1", "Soru", "oturum-A");
 
-        sira.Should().Equal("kaydet", "sohbetSonrasi");
-        _hafiza.Verify(h => h.SohbetSonrasiAsync("kullanici-1", "oturum-A", "Soru", "Cevap", It.IsAny<CancellationToken>()), Times.Once);
+        // Kullanıcı cevabı bekliyor; ağır arka plan işi (SohbetTamamlandi mesajıyla) Worker'da ayrı yapılır.
+        _hafiza.Verify(h => h.SohbetSonrasiAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

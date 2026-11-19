@@ -1,5 +1,6 @@
 using System.Reflection;
 using Asistan.Application.Bellek;
+using Asistan.Application.Kuyruk;
 using Asistan.Application.Kullanicilar;
 using Asistan.Application.Sohbet;
 using Asistan.Infrastructure.Llm;
@@ -17,7 +18,8 @@ public static class DependencyInjection
     // Uygulamanın çalışması için şart olan ayarlar. Eksikse anlamsız bir sürücü hatası yerine
     // neyin eksik olduğunu ve nasıl verileceğini söyleyen açık bir hata veririz.
     public static readonly string[] ZorunluAyarlar =
-        ["ConnectionStrings:Sql", "Mongo:Url", "LiteLlm:BaseUrl", "LiteLlm:Key"];
+        ["ConnectionStrings:Sql", "Mongo:Url", "LiteLlm:BaseUrl", "LiteLlm:Key",
+         "RabbitMq:Host", "RabbitMq:Username", "RabbitMq:Password"];
 
     public static void AyarlariDogrula(IConfiguration config)
     {
@@ -96,6 +98,7 @@ public static class DependencyInjection
         services.AddScoped<IMesajDeposu, MongoMesajDeposu>();
         services.AddScoped<IHafizaDeposu, MongoHafizaDeposu>();
         services.AddScoped<IOturumOzetDeposu, MongoOturumOzetDeposu>();
+        services.AddScoped<IIsDeposu, MongoIsDeposu>();
         services.AddHostedService<MongoIndexServisi>();
 
         // --- LiteLLM ---

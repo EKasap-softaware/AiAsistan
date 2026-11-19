@@ -34,7 +34,16 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Coverage** | Kodun yüzde kaçının testle çalıştırıldığı. |
 | **DbContext** | EF Core'da veritabanının C# karşılığı. |
 | **DbSet** | DbContext içinde bir tabloyu temsil eden koleksiyon. |
-| **Dead-letter queue (DLQ)** | Defalarca başarısız olan mesajların gittiği kuyruk. |
+| **Dead-letter queue (DLQ)** | Defalarca başarısız olan mesajların gittiği kuyruk. MassTransit'te `<kuyruk>_error` (bizde `ai-istegi_error`). |
+| **202 Accepted** | "İsteği aldım, işlenecek, henüz bitmedi." Sonucu başka bir adresten sorarsın (bizde `/api/isler/{isId}`). |
+| **At-least-once** | Mesaj en az bir kez teslim edilir, bazen iki kez. Bu yüzden consumer idempotent olmalı. |
+| **Fault (MassTransit)** | Bir mesaj tüm denemelere rağmen işlenemeyince yayınlanan "hata olayı" mesajı. |
+| **Outbox (transactional outbox)** | "Veritabanına yaz + kuyruğa gönder" işini tek bütün yapan desen. Bizde yok (bilinen sınır). |
+| **Polling** | İstemcinin sonucu hazır olana kadar belirli aralıklarla sormasıdır. |
+| **Retry (yeniden deneme)** | Geçici hatada işi tekrar denemek. Bizde 5 kez, bekleme süresi artarak. |
+| **Send / Publish** | Send: doğrudan bir kuyruğa gönder (kuyruk yoksa oluşur). Publish: bir exchange'e bırak, ilgilenen kuyruklara dağılır (kimse yoksa mesaj kaybolur). |
+| **Takip fişi** | `IsKaydi`: kuyruğa atılan sorunun durumunu (Bekliyor, Isleniyor, Tamamlandi, Hata) ve cevabını tutan kayıt. |
+| **Zaman aşımı (timeout)** | Bir işlemin en fazla ne kadar bekleyeceğinin sınırı. Dış sisteme giden her çağrıda olmalı. |
 | **Dependency Injection (DI)** | Nesneyi kendin yaratmak yerine dışarıdan almak. |
 | **Document (Belge)** | MongoDB'de satırın karşılığı: JSON benzeri bir kayıt. |
 | **Docker** | Uygulamayı bağımlılıklarıyla paketleyip her yerde aynı çalıştıran araç. |
