@@ -13,7 +13,7 @@
 | 3 | EF Core + `/api/kullanicilar` | ✅ |
 | 4 | Unit testler | ✅ (13 test) |
 | 5 | CI (GitHub Actions) | ✅ dosya hazır, Actions sekmesinden doğrulanacak |
-| 6 | LiteLLM + `/api/sohbet` | ⏳ kod hazır, Anthropic hesabına kredi bekliyor |
+| 6 | LiteLLM + `/api/sohbet` | ✅ Claude cevap veriyor |
 | 7-11 | MongoDB geçmişi, hafıza, kuyruk, LangFlow, CD | ❌ |
 
 ## Klasörler

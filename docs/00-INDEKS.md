@@ -52,7 +52,7 @@ Kuyruk, Worker, MongoDB ve hafıza **henüz yok**: Aşama 7-11'de gelecek.
 | 3 | EF Core + `/api/kullanicilar` | Bitti |
 | 4 | Unit testler | Bitti (13 test) |
 | 5 | CI (GitHub Actions) | Dosya hazır, Actions sekmesinden doğrulanmalı |
-| 6 | LiteLLM + `/api/sohbet` | Kod hazır; Anthropic hesabında kredi yok, gerçek çağrı denenmedi |
+| 6 | LiteLLM + `/api/sohbet` | Bitti (Claude'dan gerçek cevap alındı) |
 | 7 | MongoDB sohbet geçmişi | Yok |
 | 8 | AI Memory | Yok |
 | 9 | RabbitMQ + Worker | Yok |

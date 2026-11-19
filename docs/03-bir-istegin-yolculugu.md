@@ -66,7 +66,7 @@ Yanıt (201):
       HttpRequestException ──► 502 Bad Gateway
 ```
 
-**Şu an nerede takılıyoruz:** 5c ve 6. LiteLLM isteği Anthropic'e iletiyor, ama hesapta kredi olmadığı için `credit balance is too low` hatası dönüyor. (Kod, config ve anahtar doğru; sadece kredi yüklenmeli.)
+**Durum:** Zincir uçtan uca çalışıyor. Kredi yüklendikten sonra `/api/sohbet`'e "Dependency Injection nedir?" sorusu gönderildi, Claude'dan Türkçe cevap geldi (HTTP 200). Boş soru ise 400 döndü.
 
 **Bu akışın zayıf noktaları (bilerek, ileriki aşamalarda çözülecek):**
 - **Senkron:** Cevap 10-60 sn sürebilir, bağlantı o sürece bekler → Aşama 9'da kuyruk.
@@ -108,7 +108,7 @@ Yanıt (201):
 - `litellm/config.yaml`, compose'a `litellm` servisi, `.env`'ye iki yeni değişken.
 - `ILlmIstemcisi` / `SohbetServisi` / `LiteLlmIstemcisi` / `SohbetController`, 4 yeni test.
 - `Microsoft.Extensions.Http` paketi eksikti (`AddHttpClient` bulunamadı) → eklendi.
-- **Doğrulama:** LiteLLM ayağa kalktı; doğrudan istek Anthropic'e ulaştı ama hesapta kredi yok (`credit balance is too low`).
+- **Doğrulama:** Önce kredi yokken `credit balance is too low` hatası alındı (zincir çalışıyordu). 5 dolar kredi yüklenince hem LiteLLM'e doğrudan istek hem `POST /api/sohbet` (200 + Claude cevabı) ve boş soru (400) denendi.
 
 ### Temizlik · `docs: README ve gercek .http ornekleri`, `docs: ogrenme rehberi`
 - Şablondan kalan hatalı `.http` dosyası gerçek isteklerle değiştirildi, README ve bu rehber eklendi.
@@ -119,7 +119,6 @@ Yanıt (201):
 
 | Aşama | Yapılacak | Çıktı |
 |---|---|---|
-| 6'yı bitirmek | Anthropic'e kredi yükle, `/api/sohbet` dene | API'den Claude cevabı |
 | 7 | MongoDB: `Mesaj` modeli, `MongoMesajDeposu`, index | Her soru-cevap MongoDB'de (Compass ile görülür) |
 | 8 | AI Memory: kayan pencere + özet + uzun süreli hafıza | Asistan önceki oturumu hatırlıyor |
 | 9 | RabbitMQ + MassTransit + Worker | API anında 202, cevap Worker'dan |

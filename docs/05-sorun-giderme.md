@@ -52,7 +52,7 @@ Sorun hangi halkada?
 ### 7. `Your credit balance is too low to access the Anthropic API`
 **Neden:** Anthropic API'si ücretlidir ve Claude.ai aboneliğinden **ayrıdır**. Anahtar geçerli (kimlik doğrulama geçti) ama hesapta kredi yok.
 **Çözüm:** Anthropic konsolu → **Plans & Billing** → küçük bir kredi yükle. Harcama limiti koy.
-**Not:** Bu hata aslında iyi haber: API → LiteLLM → Anthropic zinciri uçtan uca çalışıyor.
+**Not:** Bu hata aslında iyi haber: kimlik doğrulama geçti, zincir çalışıyordu. Kredi yüklenince sorun kalmadı (yaşadığımız çözüm buydu).
 
 ### 8. Anahtarı sohbete yapıştırmak
 **Neden:** Gizli anahtar bir konuşma kaydına girdi.
