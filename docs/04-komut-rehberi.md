@@ -3,7 +3,7 @@
 Komutlar **PowerShell** için yazıldı. Hepsini `AiAsistan` klasöründe çalıştır:
 
 ```powershell
-cd C:\Users\emref\source\repos\KSP2\AiAsistan
+cd C:\Users\emref\source\repos\AiAsistan
 ```
 
 > PowerShell'de `curl` aslında `Invoke-WebRequest`'in takma adıdır ve sürpriz yapar. API denemek için aşağıdaki `Invoke-RestMethod` örneklerini veya `Asistan.Api.http` dosyasını kullan.

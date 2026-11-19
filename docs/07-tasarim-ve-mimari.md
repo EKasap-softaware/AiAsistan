@@ -10,27 +10,24 @@ Bu sayfadaki diyagramlar [Mermaid](https://mermaid.js.org) ile yazıldı: **GitH
 
 ## 2. Nereye bağlı? Başka projelerle ilişkisi
 
-AiAsistan, `KSP2` klasörünün içinde durur ama **`ksp1` (CariCep), `flutter`, `defter_app` gibi projelerle hiçbir kod bağı yoktur.** Kendi Git reposu, kendi çözüm dosyası (`.sln`), kendi veritabanları vardır.
+AiAsistan **bağımsız bir projedir**: kendi klasörü (`source/repos/AiAsistan`), kendi Git reposu, kendi çözüm dosyası (`.sln`), kendi veritabanları ve kendi GitHub deposu vardır. CariCep (`ksp1`) ve diğer projelerle hiçbir kod, klasör veya depo bağı yoktur.
 
 ```mermaid
 flowchart LR
-    subgraph KSP2["KSP2 klasörü (aynı klasör, ayrı projeler)"]
-        CARI["ksp1 / CariCep<br/>mevcut uygulama"]
-        AI["AiAsistan<br/>ders projesi"]
-    end
-    CARI -. "kod bağı YOK" .- AI
+    CARI["CariCep (ksp1)<br/>ayrı proje, ayrı depo"]
+    AI["AiAsistan<br/>ders projesi"]
+    CARI -. "bağ YOK" .- AI
 
     AI --> DOCKER["Docker servisleri<br/>PostgreSQL, MongoDB, RabbitMQ,<br/>LiteLLM, LangFlow"]
     AI --> CLAUDE["Claude (Anthropic)<br/>cevabı üreten model"]
-    AI --> GH["GitHub<br/>Caricep_yeni reposu"]
+    AI --> GH["GitHub<br/>kendi AiAsistan deposu"]
 ```
 
 | Soru | Cevap |
 |---|---|
 | CariCep koduna dokunuyor mu? | Hayır |
 | CariCep'in veritabanını kullanıyor mu? | Hayır, kendi PostgreSQL/MongoDB'si var (Docker'da) |
-| Git deposu aynı mı? | Hayır. KSP2'nin deposu `ksp1861/ksp1`; AiAsistan'ınki `EKasap-softaware/Caricep_yeni` (adı karıştırıcı, içeriği AiAsistan) |
-| Neden `KSP2` klasöründe? | Çalışma alanını sen böyle açtın; başta "yeni klasörde sıfırdan" ile "ksp1'in içine ekle" seçeneklerini sordum, birincisini seçtin |
+| Git deposu aynı mı? | Hayır. AiAsistan'ın kendi deposu var |
 | İleride CariCep ile bağlanabilir mi? | Evet: CariCep, AiAsistan API'sini HTTP ile çağırarak bir "yapay zekâ asistanı" özelliği alabilir. Bu henüz yapılmadı ve senin kararın |
 
 ## 3. İçinde ne çalışır? (kapsayıcı görünümü)

@@ -1,6 +1,6 @@
 # AI Asistan API
 
-.NET 9, Clean Architecture öğrenme projesi. **Ayrı proje:** KSP2 klasöründeki ksp1/CariCep ile kod bağı yok. Ayrıntı: `docs/00-INDEKS.md` (dersler: `docs/dersler/`).
+.NET 9, Clean Architecture öğrenme projesi. **Bağımsız proje:** kendi klasörü ve kendi Git/GitHub deposu var; CariCep (ksp1) ile hiçbir bağı yok. Ayrıntı: `docs/00-INDEKS.md` (dersler: `docs/dersler/`).
 
 ## Mimari
 - `src/Asistan.Domain`: veri sınıfları (EF/MongoDB'yi bilmez)
