@@ -167,6 +167,27 @@ Deneyler (Worker + API çalışırken; her biri bir sonuç öğretir):
 | `docker compose stop rabbitmq` | API 5 sn sonra **503**; fiş `Hata`. `docker compose start rabbitmq` ile geri aç, birkaç sn sonra her şey toparlanır |
 > **Panel ve sayaçlar birkaç sn gecikmeli yenilenir.** "0" gördüğünde sayfayı yenile veya birkaç sn bekle, ya da `rabbitmqctl` ile sunucuya sor.
 
+### Uygulamayı container olarak çalıştırmak (Aşama 11)
+```powershell
+docker compose --profile uygulama up -d --build      # API (localhost:5255) + Worker container olarak
+docker compose --profile uygulama ps                  # durum
+docker compose --profile uygulama logs api worker --tail 30
+docker compose --profile uygulama stop api worker     # sadece uygulamayı durdur (altyapı çalışmaya devam)
+docker build -f src/Asistan.Api/Dockerfile -t aiasistan-api:yerel .   # sadece imaj (çözüm klasöründe!)
+docker image ls                                        # imajlar ve boyutları
+```
+> IDE'deki API (5254) ve container'daki API (5255) aynı anda çalışabilir, ama **iki Worker** aynı kuyruğu paylaşır (ikisi de soru alır). Birini kapat.
+
+### Migration bundle (üretim için şema güncelleme aracı)
+```powershell
+dotnet ef migrations bundle -p src/Asistan.Infrastructure -s src/Asistan.Api --force -o efbundle.exe
+.\efbundle.exe --connection "Host=...;Database=...;Username=...;Password=..."   # idempotent: güncelse "No migrations were applied"
+```
+Uygulamanın başka sırlarına (Mongo, RabbitMQ...) ihtiyaç duymaz (`AppDbContextFabrikasi`).
+
+### MCP sunucusunu denemek (Claude Code dışında)
+`.mcp.json` Claude Code içinde kullanılır; `/mcp` komutuyla sunucuların durumu görülür. `.env`'deki `MDB_MCP_CONNECTION_STRING` değerini bir **ortam değişkenine** koyman gerekir (Claude Code `.env` okumaz). `dersler/10-claude-cli-skills-mcp.md` bölüm 5.
+
 ### LangFlow (doküman asistanı)
 ```powershell
 docker compose up -d langflow                      # başlat (ilk açılış ~1 dk, imaj 3.6 GB)

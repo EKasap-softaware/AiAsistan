@@ -145,6 +145,19 @@ Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içe
 **Neden (çoğu zaman):** Veritabanı sıfırlandı (bkz. #18), eski API anahtarı artık yok. `.env`'deki `LANGFLOW_API_KEY` geçersiz.
 **Çözüm:** `.env`'de `LANGFLOW_API_KEY=` satırını boşalt, `scripts\langflow-akisi-yukle.ps1` çalıştır (yenisini üretir), sonra `dotnet user-secrets set LangFlow:ApiKey <değer> -p src/Asistan.Api` ve `appsettings.Local.json`'ı güncelle.
 
+### 24. Migration bundle: `Unable to create a 'DbContext' ... Eksik ayar(lar): Mongo:Url...`
+**Neden:** EF araçları `DbContext`'i almak için uygulamanın `Program.cs`'ini çalıştırır; oradaki zorunlu ayar denetimi (Mongo, RabbitMQ, LangFlow) ilgisiz bu iş için de devreye girer.
+**Çözüm:** `AppDbContextFabrikasi` (`IDesignTimeDbContextFactory`): araçlar önce onu kullanır, `Program.cs`'e dokunmaz. Bundle'a sadece `--connection` verilir. Sınandı: sırlar yokken dolu DB'de "güncel", boş DB'de şemayı kurdu.
+**Ders:** Fail-fast doğrulama, yan araçları (migration) bozabilir.
+
+### 25. Container'dan `Connection refused` (örn. `localhost:5432`)
+**Neden:** Container içinde `localhost` container'ın **kendisidir**.
+**Çözüm:** Diğer servislere compose **servis adıyla** bağlan (`postgres`, `mongo`, `rabbitmq`, `litellm`, `langflow`). Ayarlar `docker-compose.yml`'daki ortam değişkenlerinde (`Mongo__Url` = `Mongo:Url`). Ayarı değiştirdiysen `docker compose up -d` (restart yetmez).
+
+### 26. MCP aracı: `connectionId: Invalid input: expected string, received undefined`
+**Neden:** `mongodb-mcp-server` 3.x araçları bir `connectionId` ister.
+**Çözüm:** Önce `list-connections` ile bağlantı adını al (`.mcp.json`'daki `MDB_MCP_CONNECTION_STRING` ile `preconfigured` adlı bağlantı gelir), araç çağrısına ekle. Claude Code bunu kendisi yapar.
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -169,6 +182,8 @@ Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içe
 | `PRECONDITION_FAILED` (RabbitMQ) | Aynı adlı kuyruk farklı ayarlarla önceden oluşturulmuş | Kuyruğu panelden sil, uygulamayı yeniden başlat |
 | Doküman modunda `LangFlow:...` eksik ayar hatası | LangFlow adresi/anahtarı kasada yok | #13/#14; `LangFlow:ApiKey` kasada ve `appsettings.Local.json`'da olmalı |
 | Doküman cevabı "yok" diyor ama dokümanda var | Bilgi `docs/` üst klasöründe değil ya da akışın Directory ayarı `types`/`path` yanlış | Akışı LangFlow arayüzünde Playground'da dene; `docs/dersler/` bilerek okunmaz |
+| `docker build` çok yavaş / her seferinde paketleri indiriyor | `COPY src/` satırı `restore`'dan önce mi? `.dockerignore` var mı? | `dersler/05-docker.md` bölüm 5 |
+| CD hiç tetiklenmiyor | `workflow_run` yalnızca `main`'deki workflow dosyasından çalışır; CI yeşil mi? | `dersler/09-ci-cd.md` bölüm 8 |
 | `Address already in use` (5254) | Önceki `dotnet run` hâlâ çalışıyor | Eski pencereyi kapat veya portu kullanan işlemi bul |
 | `Database ... does not exist` / tablo yok | Migration uygulanmamış | `dotnet ef database update ...` |
 | Migration `Build failed` | Kodda derleme hatası var | Önce `dotnet build` ile düzelt |

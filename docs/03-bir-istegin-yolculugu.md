@@ -180,6 +180,14 @@ Worker denemesi başarısız ──► 5 kez yeniden dene (bekleme süresi artar
 - **Test:** 60 → 74. **Canlı doğrulama:** dokümanda olan soru doğru ve kaynak dosyalarla cevaplandı; dokümanda **olmayan** soru ("2027 pazarlama bütçesi") "Bu bilgi dokümanlarda yok." döndü (uydurmadı); normal sohbet etkilenmedi; bilinmeyen mod 400. Dersler klasörünün asistan tarafından **okunmadığı** da soruyla doğrulandı.
 - **Ders:** `docs/dersler/` klasörü başladı (`00-ders-plani.md`, `01-langflow.md`).
 
+### Aşama 11: Docker, CD, Skill, MCP · `feat: docker imajlari, CD, yeni-entity skill ve MCP`
+- **Docker:** `Dockerfile` (Api, Worker, multi-stage), `.dockerignore`, compose'a `api`/`worker` servisleri (`profiles: ["uygulama"]`, YAML çapası ile ortak ortam bloğu). İmajlar 362 MB / 325 MB; katman önbelleği ölçüldü (1.3 / 11.9 / 26.5 sn); imajda gizli dosya yok, `uid=app`.
+- **Canlı doğrulama (container'larda):** PostgreSQL'e `postgres` adıyla bağlandı, Worker `rabbitmq` adıyla bağlandı, normal sohbet ve doküman modu uçtan uca çalıştı. Doküman modunda "Docker neden multi-stage" sorusuna asistan **"Bu bilgi dokümanlarda yok."** dedi (Docker henüz dokümanda yoktu; uydurmadı).
+- **CI/CD:** `ci.yml`'a `docker` job'u; yeni `cd.yml` (imaj → `ghcr.io`, migration bundle, güvenlik düğmeli yayın). `actionlint` ile denetlendi ve **bilerek bozuk bir workflow'la sınandı**; ayrıca GitHub'da çalıştığı **doğrulanamadı** (Actions sonuçları bu oturumdan görünmüyor, bkz. `dersler/09-ci-cd.md`).
+- **Gerçek bulgu:** Migration bundle ilk denemede, `Program.cs`'teki zorunlu ayar denetimi yüzünden (Mongo/RabbitMQ/LangFlow sırları olmadan) hata verdi. Çözüm: `AppDbContextFabrikasi` (tasarım zamanı fabrikası). Sonuç: ortamda sır yokken bile dolu veritabanında "güncel", boş veritabanında şemayı sıfırdan kurdu.
+- **Claude CLI tarafı:** `CLAUDE.md` yeniden yazıldı, `.claude/skills/yeni-entity/SKILL.md` (komutları gerçekten çalıştırılarak sınandı), `.mcp.json`. MongoDB için **salt-okunur kullanıcı** (`mcp_okuyucu`) yaratıldı: yazma denemesi veritabanı düzeyinde `Unauthorized`. MCP sunucusu protokolle konuşturuldu (initialize → 20 araç → list-collections → count; `insert-one` yok). GitHub MCP denenmedi (token yok).
+- **Dersler:** `dersler/05-docker.md`, `09-ci-cd.md`, `10-claude-cli-skills-mcp.md`.
+
 ### Temizlik · `docs: README ve gercek .http ornekleri`, `docs: ogrenme rehberi`
 - Şablondan kalan hatalı `.http` dosyası gerçek isteklerle değiştirildi, README ve bu rehber eklendi.
 
@@ -187,8 +195,15 @@ Worker denemesi başarısız ──► 5 kez yeniden dene (bekleme süresi artar
 
 ## D. Sırada ne var
 
-| Aşama | Yapılacak | Çıktı |
-|---|---|---|
-| 11 | Dockerfile, CD, skill, MCP | `main`'e merge = otomatik yayın |
+Rehberin 11 aşaması tamam. Yapılabilecek sonraki işler (hepsi bilinen sınırlardan):
+
+| İş | Neden |
+|---|---|
+| Sunucuya gerçek yayın | CD hazır ama sunucu yok; `DEPLOY_ENABLED` kapalı |
+| Integration test (Testcontainers) | Gerçek Postgres/Mongo/RabbitMQ ile otomatik test |
+| Kimlik doğrulama | Şu an `kullaniciId`'yi bilen herkes o kullanıcının verisini görür |
+| Gerçek RAG | Dokümanlar büyüyünce embedding + vektör arama |
+| Kendi MCP sunucumuz | Hafızayı Claude'a araç olarak açmak |
+| Transactional outbox | Fiş yazma ile kuyruğa gönderme arasındaki çökme boşluğu |
 
 **Her aşamadaki çalışma ritmi:** yeni branch → rehberdeki bölümü oku → kodu yaz → test yaz → `dotnet test` → commit → push → PR → CI yeşil → merge → "ne öğrendim?" sorusunu 3 cümleyle yanıtla.

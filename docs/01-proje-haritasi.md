@@ -19,6 +19,9 @@ AiAsistan/
 ├─ litellm/config.yaml            Hangi AI modeli kullanılacak
 ├─ langflow/                      LangFlow akışının tarifi (JSON, Git'te)
 ├─ scripts/                       Yardımcı betikler (LangFlow akışını yükleme)
+├─ .dockerignore                  Docker imajına GİRMEYECEK dosyalar (gizliler dahil)
+├─ .mcp.json                      Claude Code'a bağlanan MCP sunucuları (mongodb, github)
+├─ .claude/skills/                Claude'a öğretilen tekrarlayan işler (yeni-entity)
 ├─ docs/                          Bu rehber (dersler/ altında ayrıntılı dersler)
 ├─ src/
 │  ├─ Asistan.Domain/             Veri sınıfları
@@ -87,6 +90,7 @@ Değişkenler:
 | `LANGFLOW_SUPERUSER`, `LANGFLOW_SUPERUSER_PASSWORD` | LangFlow arayüzü/API girişi (girişsiz erişim kapalı) |
 | `LANGFLOW_SECRET_KEY` | LangFlow'un kayıtlı gizli değerleri şifrelediği anahtar. **Değişirse eski şifreli değerler okunamaz** |
 | `LANGFLOW_API_KEY` | .NET programlarının LangFlow akışını çağırdığı anahtar (`scripts/langflow-akisi-yukle.ps1` üretir) |
+| `MDB_MCP_CONNECTION_STRING` | Claude Code MCP sunucusu için **salt-okunur** MongoDB kullanıcısının (`mcp_okuyucu`) bağlantı cümlesi |
 
 ### `.gitignore`
 Git'in takip etmeyeceği dosyalar: `bin/`, `obj/`, `.vs/`, `.env`, `coverage/` vb.
@@ -115,8 +119,15 @@ GitHub'ın makinesinde çalışan otomatik kontrol.
 - **Ne zaman:** `main`'e her push'ta ve `main`'e açılan her Pull Request'te.
 - **Nerede:** `ubuntu-latest` (GitHub'ın kiraladığı temiz bir Linux).
 - **Adımlar:** kodu çek → .NET 9 kur → `dotnet restore` → `dotnet build -c Release` → `dotnet test` (coverage ile) → coverage raporunu yükle.
-- Docker ve veritabanı **yok**: sadece unit testler koşar (onlar DB istemez).
+- Docker ve veritabanı **yok** (testler için): sadece unit testler koşar (onlar DB istemez).
+- **İkinci job `docker` (Aşama 11):** `test` yeşilse API ve Worker Dockerfile'larını **derler (göndermez)**: bozuk bir Dockerfile PR'da yakalanır.
 
+## `.github/workflows/cd.yml` (Aşama 11)
+CI yeşil bitince `main` için çalışır (`workflow_run` + `conclusion == 'success'`); elle de başlatılabilir. Üç job:
+- **`imaj`** (matrix: `api`, `worker`): CI'ın test ettiği **aynı commit**'i çeker, `ghcr.io`'ya `GITHUB_TOKEN` ile giriş yapar, imajı derleyip gönderir. Etiketler: `:<tam commit SHA>` ve `:latest`. Katman önbelleği GitHub'da (`type=gha`). İzinler en aza indirilmiş (`contents: read`, `packages: write`).
+- **`migration-paketi`:** `dotnet ef migrations bundle` ile veritabanı şemasını güncelleyen tek bir çalıştırılabilir dosya (`efbundle`, linux-x64) üretir ve artifact olarak saklar.
+- **`yayinla`:** SSH ile sunucuda `docker compose pull` + `up -d`. **`vars.DEPLOY_ENABLED == 'true'` olmadıkça hiç çalışmaz** (henüz sunucu yok) ve `production` ortamı onay kuralıyla korunabilir.
+Ayrıntı ve **neyin doğrulandığı / doğrulanamadığı**: `dersler/09-ci-cd.md`.
 ---
 
 ## `src/Asistan.Domain` (hiçbir şeyi bilmeyen katman)
@@ -220,6 +231,9 @@ Veritabanının C# karşılığı. `DbSet<Kullanici>` ve `DbSet<Abonelik>` tablo
 - `GetirAsync`: `AsNoTracking` (sadece okuma, hızlı) + `Include(Abonelikler)` (ilişkili veriyi aynı sorguda getir).
 - `EmailVarMiAsync`: `AnyAsync` ile var mı diye bakar.
 - `EkleAsync`: `Add` + `SaveChangesAsync` (burada gerçekten Postgres'e yazılır).
+
+### `Persistence/AppDbContextFabrikasi.cs` (Aşama 11)
+`IDesignTimeDbContextFactory<AppDbContext>`: EF araçları (`migrations add`, `migrations bundle`) `DbContext`'i **bununla** üretir; uygulamanın `Program.cs`'ine ve onun zorunlu ayarlarına (Mongo, RabbitMQ, LangFlow sırları) **bağımlı olmaz**. Bağlantı cümlesi: ortam değişkeni `ConnectionStrings__Sql` ya da sahte yer tutucu (`migrations add` DB'ye bağlanmaz; bundle'ın `--connection` seçeneği üstüne yazar). Bu fabrika, bundle'ın ilk denemede "ayar eksik" hatası verip üretimde tüm sırlara ihtiyaç duyacak olmasını önler (bkz. `05-sorun-giderme.md` #24).
 
 ### `Persistence/Migrations/` (otomatik üretilir, elle düzenleme)
 - `20261119084848_IlkSema.cs`: "Kullanicilar ve Abonelikler tablolarını oluştur" (Up) ve "geri al" (Down).
@@ -377,6 +391,18 @@ Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **
 
 ---
 
+## Dockerfile'lar ve `.dockerignore` (Aşama 11)
+- `src/Asistan.Api/Dockerfile` ve `src/Asistan.Worker/Dockerfile`: **multi-stage build**. Aşama 1 büyük SDK imajında derler (`dotnet publish`), aşama 2 küçük çalışma imajına (`aspnet`/`runtime`) sadece çıktıyı kopyalar. Önce sadece `.csproj` dosyaları kopyalanıp `restore` yapılır (paket katmanı önbellekte kalır), sonra kod. `USER app`: root olmayan kullanıcı. Build bağlamı çözüm klasörüdür (`docker build -f src/Asistan.Api/Dockerfile .`).
+- **Ölçülen:** API imajı 362 MB, Worker 325 MB. Derleme süresi: önbellekte 1.3 sn, sadece kod değişince 11.9 sn, `.csproj` değişince 26.5 sn, sıfırdan ~2 dk.
+- `.dockerignore`: `bin/obj`, `.git`, `tests/`, `docs/` ve **gizli dosyalar** (`.env`, `appsettings.Local.json`) imaja girmez (imajın içinde olmadığı doğrulandı).
+- Ayrıntılı ders: `dersler/05-docker.md`.
+
+## `.claude/` ve `.mcp.json` (Aşama 11)
+- `CLAUDE.md`: Claude'un her oturum başında okuduğu proje notu (mimari, komutlar, kurallar, gizli bilgiler, MCP).
+- `.claude/skills/yeni-entity/SKILL.md`: yeni veritabanı entity'si eklemenin 11 adımı (Domain → DbContext → arayüz/servis → depo → DI → migration → testler → doğrulama → rehber → commit). İçindeki migration komutu gerçekten çalıştırılarak sınandı.
+- `.mcp.json`: `mongodb` (`mongodb-mcp-server@3.3.0 --readOnly`, **salt-okunur** `mcp_okuyucu` kullanıcısı; sürüm sabit) ve `github` (uzak HTTP sunucu, token ortam değişkeninden; denenmedi). Değerler `${...}` ile ortam değişkeninden gelir.
+- Ayrıntılı ders: `dersler/10-claude-cli-skills-mcp.md`.
+
 ## Docker servisleri (`docker-compose.yml`)
 
 | Servis | Image | Port | Volume | Ne için |
@@ -386,6 +412,8 @@ Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **
 | `rabbitmq` | `rabbitmq:4-management` | 5672 (uygulama), 15672 (panel) | `rabbitmq_data` | Kuyruk (**kullanılıyor**, Aşama 9) |
 | `litellm` | `ghcr.io/berriai/litellm:main-stable` | 4000 | `config.yaml` (salt-okunur) | Claude'a tek kapı |
 | `langflow` | `langflowai/langflow:1.13.3` | 7860 | `langflow_data` (veritabanı), `./docs` → `/projedocs` (salt-okunur) | Doküman asistanı akışı (Aşama 10). Girişsiz erişim kapalı; veritabanı volume'de (`LANGFLOW_SAVE_DB_IN_CONFIG_DIR`); güvenlik ayarları için `dersler/01-langflow.md` bölüm 9 |
+| `api` | `aiasistan-api:yerel` (kendi imajımız; `API_IMAGE` ile registry imajı verilebilir) | 5255 → 8080 | (yok) | Web API. **Varsayılan başlamaz** (`profiles: ["uygulama"]`); `docker compose --profile uygulama up -d --build`. Ayarlar ortam değişkeniyle (`Mongo__Url` = `Mongo:Url`); diğer servislere servis **adıyla** ulaşır |
+| `worker` | `aiasistan-worker:yerel` (`WORKER_IMAGE`) | (yok) | (yok) | Kuyruk işçisi; aynı profil ve aynı ortam bloğu (YAML çapası `&uygulama-ortami`) |
 
 Postgres, Mongo ve RabbitMQ'da **healthcheck** var: "başladı" ile "hazır" farklıdır, `docker compose ps` `healthy` gösterir.
 
@@ -401,5 +429,6 @@ Postgres, Mongo ve RabbitMQ'da **healthcheck** var: "başladı" ile "hazır" far
 | `http://localhost:4000` | LiteLLM |
 | `http://localhost:15672` | RabbitMQ yönetim paneli |
 | `http://localhost:7860` | LangFlow arayüzü (kullanıcı/şifre `.env`'de) |
+| `http://localhost:5255` | Container'daki API (`--profile uygulama`) |
 | `localhost:5432` | PostgreSQL |
 | `localhost:27017` | MongoDB |

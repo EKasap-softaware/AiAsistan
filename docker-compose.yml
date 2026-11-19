@@ -86,6 +86,47 @@ services:
     depends_on:
       - litellm
 
+  # ---- Uygulamanın KENDİSİ container olarak. "profiles" sayesinde varsayılan `docker compose up` bunları başlatmaz
+  # (geliştirirken API/Worker'ı IDE'den çalıştırıyoruz). Başlatmak için: docker compose --profile uygulama up -d --build
+  api:
+    profiles: ["uygulama"]
+    build:
+      context: .
+      dockerfile: src/Asistan.Api/Dockerfile
+    image: ${API_IMAGE:-aiasistan-api:yerel}     # sunucuda registry'deki imaj adı verilir (CD)
+    environment: &uygulama-ortami
+      # Container içinde "localhost" kendisidir! Diğer servislere compose servis ADIYLA ulaşılır.
+      # ".NET'te __ (çift alt çizgi) = appsettings'teki : (iç içe anahtar)": Mongo__Url = Mongo:Url
+      ConnectionStrings__Sql: Host=postgres;Port=5432;Database=asistan;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Mongo__Url: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: ${RABBITMQ_USER}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD}
+      LiteLlm__BaseUrl: http://litellm:4000
+      LiteLlm__Key: ${LITELLM_MASTER_KEY}
+      LangFlow__BaseUrl: http://langflow:7860
+      LangFlow__ApiKey: ${LANGFLOW_API_KEY}
+    ports:
+      - "5255:8080"        # 5254 IDE'deki API'ye ayrılı; container'daki API 5255'ten erişilir
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: unless-stopped
+
+  worker:
+    profiles: ["uygulama"]
+    build:
+      context: .
+      dockerfile: src/Asistan.Worker/Dockerfile
+    image: ${WORKER_IMAGE:-aiasistan-worker:yerel}
+    environment: *uygulama-ortami
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   mongo_data:

@@ -33,3 +33,21 @@ jobs:
         with:
           name: coverage
           path: coverage/**/coverage.cobertura.xml
+
+  # Dockerfile'lar derleniyor mu? (Gönderme YOK, sadece kontrol.) Bozuk bir Dockerfile PR'da yakalansın,
+  # yayın sırasında değil.
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: API imajı derlenir mi
+        run: docker build -f src/Asistan.Api/Dockerfile -t api-kontrol .
+
+      - name: Worker imajı derlenir mi
+        run: docker build -f src/Asistan.Worker/Dockerfile -t worker-kontrol .

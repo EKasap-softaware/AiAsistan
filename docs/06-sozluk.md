@@ -48,6 +48,16 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **Document (Belge)** | MongoDB'de satırın karşılığı: JSON benzeri bir kayıt. |
 | **Docker** | Uygulamayı bağımlılıklarıyla paketleyip her yerde aynı çalıştıran araç. |
 | **Dockerfile** | Image'ın nasıl inşa edileceğini anlatan dosya. |
+| **Multi-stage build** | Dockerfile'da iki aşama: büyük imajda derle, küçük imajda sadece çıktıyı çalıştır. İmajı küçültür ve güvenli yapar. |
+| **Katman önbelleği (layer cache)** | Docker her Dockerfile satırını bir katman olarak saklar; değişmeyen katman yeniden üretilmez. Sıra önemli: seyrek değişen (paketler) önce, sık değişen (kod) sonra. |
+| **Profil (compose profile)** | Bir servisi isteğe bağlı yapar: `profiles: ["uygulama"]` olan servis sadece `--profile uygulama` ile başlar. |
+| **YAML çapası (`&` / `*`)** | YAML'da bir bloğa ad verip (`&ad`) başka yerde aynen yeniden kullanmak (`*ad`). |
+| **ghcr.io** | GitHub Container Registry: GitHub'ın imaj deposu. |
+| **Matrix (GitHub Actions)** | Aynı job'u farklı değerlerle (api, worker) paralel çalıştırmak. |
+| **workflow_run** | Bir workflow başka bir workflow bitince çalışsın diye kullanılan tetikleyici (CD, CI'dan sonra). |
+| **Migration bundle** | Veritabanı şemasını güncelleyen tek bir çalıştırılabilir dosya. Üretimde uygulama açılışında migrate etmekten güvenlidir. |
+| **Design-time factory** | EF araçlarına `DbContext`'in nasıl üretileceğini söyleyen sınıf (`IDesignTimeDbContextFactory`); uygulamanın `Program.cs`'inden bağımsız. |
+| **actionlint** | GitHub Actions workflow dosyalarının hatalarını (yanlış alan, eksik sürüm) bulan denetleyici. |
 | **Domain** | Saf iş kavramları ve veri sınıfları katmanı. |
 | **dotnet CLI** | `dotnet build`, `dotnet test` gibi komut satırı aracı. |
 | **Embed (MongoDB)** | İlişkili veriyi belgenin içine gömmek. |
@@ -80,7 +90,10 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **LiteLLM** | Birçok LLM'e tek OpenAI uyumlu kapıdan erişim sağlayan araç. |
 | **LLM** | Large Language Model: Claude, GPT gibi dil modelleri. |
 | **Lifetime (DI)** | Singleton / Scoped / Transient: nesnenin ne kadar yaşayacağı. |
-| **MCP** | Model Context Protocol: AI'yı dış araçlara bağlayan standart (Aşama 11). |
+| **MCP** | Model Context Protocol: AI uygulamalarını dış araç ve veri kaynaklarına bağlayan açık standart. Sunucu araç sunar, istemci (Claude Code) çağırır. `.mcp.json` ile tanımlanır (bkz. `dersler/10-claude-cli-skills-mcp.md`). |
+| **Skill (Claude)** | Tekrarlayan bir işin tarifi: `.claude/skills/<ad>/SKILL.md`. Sadece ilgili iş geldiğinde yüklenir (CLAUDE.md ise her zaman). |
+| **CLAUDE.md** | Claude Code'un her oturum başında okuduğu proje notu (mimari, komutlar, kurallar). Kısa tutulur. |
+| **stdio (MCP)** | MCP sunucusuyla istemcinin standart giriş/çıkış üzerinden satır satır JSON konuşması. |
 | **Merge** | İki branch'i birleştirmek. |
 | **Mutasyon kontrolü** | Kodu bilerek bozup testlerin bunu yakalayıp yakalamadığına bakmak. |
 | **Middleware** | İstek controller'a ulaşmadan geçtiği ara katmanlar (sıra önemli). |

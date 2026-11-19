@@ -379,10 +379,15 @@ Ayrıntılı ders: **[dersler/01-langflow.md](dersler/01-langflow.md)**. Özet:
 
 ---
 
-## 17. Henüz yazılmamış ama planda olanlar
+## 17. Docker, CD, Skill ve MCP (Aşama 11)
 
-| Konu | Neden gerekli | Aşama |
-|---|---|---|
-| **CD, Skills, MCP** | Otomatik yayın; Claude'a tekrarlayan işleri öğretmek; Claude'u dış araçlara bağlamak | 11 |
+Ayrıntılı dersler: **[dersler/05-docker.md](dersler/05-docker.md)**, **[dersler/09-ci-cd.md](dersler/09-ci-cd.md)**, **[dersler/10-claude-cli-skills-mcp.md](dersler/10-claude-cli-skills-mcp.md)**. Özet:
+
+- **Docker imajı:** API ve Worker artık kendi imajlarıyla container olarak çalışır (`docker compose --profile uygulama up -d --build`). Multi-stage build (derle büyük imajda, çalıştır küçük imajda), katman önbelleği (önce `.csproj`, sonra kod), root olmayan kullanıcı, `.dockerignore` ile gizli dosyalar dışarıda. Container içinde `localhost` kendisidir: diğer servislere **servis adıyla** ulaşılır, ayarlar `Mongo__Url` gibi ortam değişkeniyle verilir.
+- **CD:** CI yeşilse imajlar commit SHA'sıyla etiketlenip `ghcr.io`'ya gider; sunucuya yayın bir güvenlik düğmesine (`DEPLOY_ENABLED`) bağlı ve henüz kapalı. Şema güncellemesi uygulama açılışında değil, **migration bundle** ile deploy öncesi tek seferde yapılır.
+- **Skill:** `.claude/skills/yeni-entity`: Claude'a "yeni tablo ekleme" işinin 11 adımını öğretir.
+- **MCP:** `.mcp.json` ile Claude Code, MongoDB'yi **salt-okunur** kullanıcıyla sorgulayabilir; GitHub MCP tanımlı ama denenmedi.
+
+**Hâlâ yapılmayanlar (bilerek):** sunucuya gerçek yayın (sunucu yok), integration test (Testcontainers), kimlik doğrulama, gerçek RAG (embedding + vektör arama), kendi MCP sunucumuz, `_error` kuyruğunu yeniden işleme aracı, transactional outbox.
 
 **Hafıza ana fikri:** Neyi, ne kadar göndereceğini yönetmek = bağlam penceresine en faydalı bilgiyi en az token'la sığdırma sanatı (maliyet + kalite).

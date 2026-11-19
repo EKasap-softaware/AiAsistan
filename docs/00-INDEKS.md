@@ -52,7 +52,7 @@ GET /api/isler/{isId} ─► fişin durumu ve cevap       (kullanıcı cevabı b
 POST /api/kullanicilar ─► KullaniciServisi ─► PostgreSQL
 ```
 
-CD, Skills ve MCP **henüz yok**: Aşama 11'de gelecek. (Kuyruk ve Worker Aşama 9'da, LangFlow doküman modu Aşama 10'da eklendi.)
+Rehberin 11 aşaması tamam. API ve Worker artık Docker imajı olarak da çalışır (Aşama 11). Bilinen sınırlar: `02-kavramlar.md` bölüm 17.
 
 ## Aşama durumu
 
@@ -68,4 +68,4 @@ CD, Skills ve MCP **henüz yok**: Aşama 11'de gelecek. (Kuyruk ve Worker Aşama
 | 8 | AI Memory | Bitti (kısa + uzun süreli hafıza, gerçek Claude ile doğrulandı) |
 | 9 | RabbitMQ + Worker | Bitti (API 202 döner, Worker işler; Worker/model/RabbitMQ çökme senaryoları gerçek sistemde denendi) |
 | 10 | LangFlow (doküman modu) | Bitti (`mod: dokuman`; akış Git'te, yükleme betiği canlı test edildi) |
-| 11 | CD + Skills + MCP | Yok |
+| 11 | Docker imajları, CD, Skill, MCP | Bitti (container'larda uçtan uca doğrulandı; CD'nin GitHub'da çalışması doğrulanamadı, bkz. dersler/09) |

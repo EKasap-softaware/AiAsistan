@@ -4,7 +4,7 @@
 
 > **Öğrenme rehberi:** her dosyanın ne işe yaradığı, kavramlar, komutlar ve sorun giderme için [docs/00-INDEKS.md](docs/00-INDEKS.md) dosyasından başla.
 
-## Şu an ne var? (Aşama 9/11)
+## Şu an ne var? (Aşama 11/11)
 
 | Aşama | Konu | Durum |
 |---|---|---|
@@ -18,7 +18,7 @@
 | 8 | AI Memory (özetleme + kalıcı hafıza) | ✅ asistan konuşmayı ve kullanıcıyı hatırlıyor |
 | 9 | RabbitMQ + Worker (API anında 202, cevabı Worker üretir) | ✅ |
 | 10 | LangFlow doküman asistanı (`"mod": "dokuman"`) | ✅ |
-| 11 | CD, Skills, MCP | ❌ |
+| 11 | Docker imajları, CD, skill, MCP | ✅ |
 
 ## Klasörler
 
@@ -39,6 +39,8 @@ powershell -ExecutionPolicy Bypass -File scripts\langflow-akisi-yukle.ps1   # (b
 dotnet test                      # testleri çalıştır
 dotnet run --project src/Asistan.Api --launch-profile http      # 1. terminal: API
 dotnet run --project src/Asistan.Worker                          # 2. terminal: Worker (soruları o işler!)
+# VEYA ikisini birden container olarak (API: localhost:5255):
+docker compose --profile uygulama up -d --build
 ```
 
 > **Worker çalışmıyorsa** sorular kaybolmaz, kuyrukta bekler ve işler `Bekliyor` kalır; Worker açılınca işlenir. Visual Studio'da ikisini birden başlatmak için: Solution'a sağ tık → *Configure Startup Projects* → *Multiple startup projects* → `Asistan.Api` ve `Asistan.Worker` için *Start*.

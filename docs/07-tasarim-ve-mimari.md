@@ -137,4 +137,4 @@ Oklar "bilir" demektir: Domain hiçbir şeyi bilmez, Application sadece Domain'i
 
 - **Arayüz yok.** Ekran tasarımı (Figma, Windows Forms, Razor sayfası) bu projede yoktur; sadece API'dir.
 - **Kimlik doğrulama yok.** Kullanıcı kimliğini bilen herkes o kullanıcının oturumunu ve hafızasını görebilir.
-- **Tek makine.** Her şey bilgisayarında Docker ile çalışır; sunucuya yayınlama Aşama 11'de.
+- **Tek makine.** Her şey bilgisayarında Docker ile çalışır. API ve Worker imajları ve CD hazır (`.github/workflows/cd.yml`), ama gerçek bir sunucu yok; yayın adımı `DEPLOY_ENABLED` düğmesiyle kapalı.

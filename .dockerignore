@@ -1,0 +1,26 @@
+# Docker'a "build bağlamı" olarak gönderilmeyecekler: imaj küçük ve hızlı olsun, gizli dosyalar imaja girmesin.
+
+# Derleme çıktıları (container içinde yeniden derlenir)
+**/bin/
+**/obj/
+
+# GİZLİ DOSYALAR: asla imaja girmemeli
+.env
+**/appsettings.Local.json
+
+# Geliştirme ve Git
+.git/
+.github/
+.vs/
+.vscode/
+*.user
+
+# İmajın ihtiyacı olmayanlar
+tests/
+docs/
+langflow/
+scripts/
+litellm/
+coverage/
+*.md
+docker-compose*.yml

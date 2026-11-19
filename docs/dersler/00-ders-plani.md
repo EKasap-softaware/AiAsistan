@@ -10,11 +10,11 @@ Her ders, **projedeki gerçek dosyalar ve gerçek çıktılar** üzerinden anlat
 | 2 | LiteLLM | Sırada | `litellm/config.yaml`, `LiteLlmIstemcisi.cs` |
 | 3 | MongoDB | Sırada | `Infrastructure/Mongo/`, `MongoAyarlari.cs` |
 | 4 | RabbitMQ | Sırada | `Application/Kuyruk/`, `Worker/` |
-| 5 | Docker Container | Sırada (Aşama 11 ile) | `docker-compose.yml`, Dockerfile'lar |
+| 5 | **Docker Container** | Yazıldı: [05-docker.md](05-docker.md) | `docker-compose.yml`, Dockerfile'lar, `.dockerignore` |
 | 6 | AI Memory (kısa/uzun süreli) | Sırada | `Application/Bellek/HafizaServisi.cs` |
 | 7 | .NET + EF Core + Solution + Unit test | Sırada | `src/`, `tests/`, `Directory.Build.props` |
 | 8 | Git / GitHub | Sırada | `.git`, commit geçmişi, `.gitignore` |
-| 9 | CI/CD | Sırada (Aşama 11 ile) | `.github/workflows/` |
-| 10 | Claude CLI / Skills / MCP / `.md` | Sırada (Aşama 11 ile) | `CLAUDE.md`, ileride `.claude/skills/`, `.mcp.json` |
+| 9 | **CI/CD** | Yazıldı: [09-ci-cd.md](09-ci-cd.md) | `.github/workflows/`, `AppDbContextFabrikasi.cs` |
+| 10 | **Claude CLI / Skills / MCP / `.md`** | Yazıldı: [10-claude-cli-skills-mcp.md](10-claude-cli-skills-mcp.md) | `CLAUDE.md`, `.claude/skills/`, `.mcp.json` |
 
 Genel referans için ana rehber: [../00-INDEKS.md](../00-INDEKS.md).
