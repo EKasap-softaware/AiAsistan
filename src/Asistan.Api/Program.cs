@@ -1,4 +1,5 @@
 using Asistan.Application.Kullanicilar;
+using Asistan.Application.Sohbet;
 using Asistan.Infrastructure;
 using Scalar.AspNetCore;
 
@@ -9,6 +10,7 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IKullaniciServisi, KullaniciServisi>();
+builder.Services.AddScoped<ISohbetServisi, SohbetServisi>();
 
 var app = builder.Build();
 
