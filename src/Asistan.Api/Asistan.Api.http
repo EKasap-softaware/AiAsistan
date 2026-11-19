@@ -1,6 +1,16 @@
-@Asistan.Api_HostAddress = http://localhost:5254
+@host = http://localhost:5254
 
-GET {{Asistan.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Yeni kullanıcı oluştur (201)
+POST {{host}}/api/kullanicilar
+Content-Type: application/json
 
-###
+{ "ad": "Ayşe", "email": "ayse@test.com" }
+
+### Kullanıcıyı getir (200, yoksa 404)
+GET {{host}}/api/kullanicilar/1
+
+### Claude'a soru sor (LiteLLM ve API anahtarı gerekir)
+POST {{host}}/api/sohbet
+Content-Type: application/json
+
+{ "kullaniciId": "1", "soru": "Dependency Injection nedir?" }
