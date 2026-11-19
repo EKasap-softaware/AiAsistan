@@ -3,7 +3,17 @@
 Burası, projeyi **okuyarak değil, kendi ellerinle yaparak** öğrenmen için. 10 lab var, her biri bir seviye.
 Bir seviyeyi geçince bir sonraki **otomatik açılır**; kilitli lab'a atlayamazsın.
 
-## Tek komutla oyna
+## Öğretim sayfası (önerilen yol, hiçbir şey kurmadan)
+
+`atolye/baslat.cmd` dosyasına çift tıkla (ya da `python atolye/sunucu.py`), tarayıcıda **http://localhost:5300** açılır.
+Her seviyede: şema, anlatım, **örnek**, **görev** ve cevabını yazdığın **editör**. "Kontrol et" cevabın yapısını anında denetler
+(✔/✘ + ipucu); 2 başarısız denemeden sonra çözüm gösterilir. Tüm adımları geçince sonraki seviye açılır.
+48 alıştırma + 51 mülakat sorusu; ilerleme tarayıcıda (localStorage) tutulur. Kurulum, Docker, veritabanı gerekmez.
+
+Sayfa cevabın **yapısını** denetler (doğru komut, doğru kod parçaları); C#/Docker/Mongo'yu gerçekten çalıştırmaz.
+Gerçek projede çalıştırarak doğrulamak istersen aşağıdaki komut satırı doğrulayıcısı (isteğe bağlı) bunu yapar.
+
+## Komut satırından oynamak istersen
 
 ```powershell
 cd AiAsistan

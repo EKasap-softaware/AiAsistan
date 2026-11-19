@@ -1,0 +1,615 @@
+§LAB 01 | .NET + EF Core + Solution + Unit Test | Bir özelliği baştan sona yaz: entity → servis → DbContext → migration → test. Gerçek işte her gün yapacağın iş bu.
+
+§ADIM Entity yaz (Domain katmanı) | cs
+§ANLAT
+Domain katmanı **saf veri sınıflarını** tutar: EF'yi, veritabanını, hiçbir paketi bilmez. EF, `Id` adlı alanı otomatik birincil anahtar yapar. `= null!` "boş gelmeyecek, ben garanti ediyorum" demektir; `string?` ise veritabanında NULL olabilir demektir.
+§ORNEK
+namespace Asistan.Domain.Entities;
+
+public class Urun
+{
+    public int Id { get; set; }
+    public string Ad { get; set; } = null!;
+    public decimal Fiyat { get; set; }
+    public DateTime Eklenme { get; set; } = DateTime.UtcNow;
+}
+§GOREV
+`Etiket` sınıfını yaz: `Id` (int), `Ad` (string, boş olamaz) ve `Olusturulma` (DateTime, varsayılan değeri UTC şimdi).
+§BASLANGIC
+namespace Asistan.Domain.Entities;
+
+public class Etiket
+{
+    // alanları buraya yaz
+}
+§K Sınıf adı Etiket ⟫ /class\s+Etiket\b/ ⟫ public class Etiket { ... } şeklinde olsun
+§K int Id { get; set; } ⟫ /int\s+Id\s*\{\s*get;\s*set;\s*\}/ ⟫ public int Id { get; set; }
+§K string Ad, boş olamaz (null!) ⟫ /string\s+Ad\s*\{\s*get;\s*set;\s*\}\s*=\s*null!/ ⟫ public string Ad { get; set; } = null!;
+§K DateTime Olusturulma = UtcNow ⟫ /DateTime\s+Olusturulma\s*\{\s*get;\s*set;\s*\}\s*=\s*DateTime\.UtcNow/ ⟫ public DateTime Olusturulma { get; set; } = DateTime.UtcNow;
+§COZUM
+namespace Asistan.Domain.Entities;
+
+public class Etiket
+{
+    public int Id { get; set; }
+    public string Ad { get; set; } = null!;
+    public DateTime Olusturulma { get; set; } = DateTime.UtcNow;
+}
+
+§ADIM Servis ve iş kuralı (Application katmanı) | cs
+§ANLAT
+**İş kuralları servise yazılır**, controller'a değil. Servis veritabanını bilmez: sadece `IEtiketDeposu` arayüzünü bilir (Moq ile sahtelenebilsin diye). Kural ihlalinde `ArgumentException` fırlat, kaydetme. Hata yutma kuralı: çağıran görsün.
+§ORNEK
+public class UrunServisi(IUrunDeposu depo)
+{
+    public async Task<Urun> OlusturAsync(string ad, decimal fiyat, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ad))
+            throw new ArgumentException("Ad boş olamaz.", nameof(ad));
+        if (fiyat < 0)
+            throw new ArgumentException("Fiyat negatif olamaz.", nameof(fiyat));
+
+        var urun = new Urun { Ad = ad.Trim(), Fiyat = fiyat };
+        await depo.EkleAsync(urun, ct);
+        return urun;
+    }
+}
+§GOREV
+`OlusturAsync` metodunu yaz: ad boş/boşluksa hata; **Trim() sonrası 50 karakterden uzunsa** hata; aksi hâlde kırpılmış adla `Etiket` oluşturup `depo.EkleAsync` ile kaydet ve döndür.
+§BASLANGIC
+public class EtiketServisi(IEtiketDeposu depo)
+{
+    public async Task<Etiket> OlusturAsync(string ad, CancellationToken ct = default)
+    {
+        // metodun içini yaz
+    }
+}
+§K Boş/boşluk kontrolü ⟫ /string\.IsNullOrWhiteSpace\(\s*ad\s*\)/ ⟫ string.IsNullOrWhiteSpace(ad) ile kontrol et
+§K 50 karakter sınırı ⟫ /Length\s*>\s*50/ ⟫ ad.Trim().Length > 50 gibi; sınır 50
+§K Trim kullanıldı ⟫ /Trim\(\)/ ⟫ boşlukları ad.Trim() ile temizle
+§K İki ayrı hata fırlatılıyor ⟫ /throw\s+new\s+ArgumentException[\s\S]*throw\s+new\s+ArgumentException/ ⟫ iki kural için iki throw new ArgumentException(...) gerek
+§K Depoya kaydediliyor (await) ⟫ /await\s+depo\.EkleAsync\(/ ⟫ await depo.EkleAsync(etiket, ct);
+§K Etiket döndürülüyor ⟫ /return\s+\w+\s*;/ ⟫ kaydettiğin nesneyi return et
+§COZUM
+public class EtiketServisi(IEtiketDeposu depo)
+{
+    public async Task<Etiket> OlusturAsync(string ad, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ad))
+            throw new ArgumentException("Etiket adı boş olamaz.", nameof(ad));
+        if (ad.Trim().Length > 50)
+            throw new ArgumentException("Etiket adı en fazla 50 karakter olabilir.", nameof(ad));
+
+        var etiket = new Etiket { Ad = ad.Trim() };
+        await depo.EkleAsync(etiket, ct);
+        return etiket;
+    }
+}
+
+§ADIM DbContext: tabloyu tanıt (Infrastructure) | cs
+§ANLAT
+`DbSet<T>` bir **tablodur**. `OnModelCreating` içinde sütun kuralları yazılır; `HasMaxLength(50)` SQL'de `varchar(50)` olur. Entity'yi DbContext'e eklemezsen migration tabloyu hiç üretmez (en sık yapılan hata).
+§ORNEK
+public DbSet<Urun> Urunler => Set<Urun>();
+
+protected override void OnModelCreating(ModelBuilder mb)
+{
+    mb.Entity<Urun>().Property(u => u.Ad).HasMaxLength(100);
+}
+§GOREV
+`AppDbContext`'e `Etiket` için `Etiketler` adlı DbSet ekle ve `Ad` sütununa **en fazla 50 karakter** kuralı koy.
+§BASLANGIC
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Kullanici> Kullanicilar => Set<Kullanici>();
+
+    protected override void OnModelCreating(ModelBuilder mb)
+    {
+        mb.Entity<Kullanici>().Property(k => k.Ad).HasMaxLength(100);
+    }
+}
+§K DbSet<Etiket> Etiketler ⟫ /DbSet<Etiket>\s+Etiketler\s*=>\s*Set<Etiket>\(\)/ ⟫ public DbSet<Etiket> Etiketler => Set<Etiket>();
+§K Entity<Etiket> yapılandırıldı ⟫ /Entity<Etiket>/ ⟫ OnModelCreating içinde mb.Entity<Etiket>()...
+§K Ad için HasMaxLength(50) ⟫ /Entity<Etiket>[\s\S]*Ad[\s\S]*HasMaxLength\(\s*50\s*\)/ ⟫ .Property(e => e.Ad).HasMaxLength(50)
+§COZUM
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Kullanici> Kullanicilar => Set<Kullanici>();
+    public DbSet<Etiket> Etiketler => Set<Etiket>();
+
+    protected override void OnModelCreating(ModelBuilder mb)
+    {
+        mb.Entity<Kullanici>().Property(k => k.Ad).HasMaxLength(100);
+        mb.Entity<Etiket>().Property(e => e.Ad).HasMaxLength(50);
+    }
+}
+
+§ADIM Migration komutları | sh
+§ANLAT
+Migration, şema değişikliğini **kodla birlikte sürümler**. `migrations add` sadece C# dosyası üretir, veritabanına dokunmaz. `-p` migration'ın yazılacağı proje (Infrastructure), `-s` ayarların okunduğu başlangıç projesi (Api). Üretilen SQL'i `script` ile okumadan uygulama.
+§ORNEK
+dotnet ef migrations add UrunEkle -p src/Asistan.Infrastructure -s src/Asistan.Api -o Persistence/Migrations
+dotnet ef migrations script -p src/Asistan.Infrastructure -s src/Asistan.Api
+dotnet ef database update -p src/Asistan.Infrastructure -s src/Asistan.Api
+§GOREV
+`EtiketEkle` adlı migration'ı üret (çıktı klasörü `Persistence/Migrations`), SQL'ini yazdır, sonra veritabanına uygula. Üç komutu da yaz.
+§BASLANGIC
+# komutları buraya yaz
+§K migrations add EtiketEkle ⟫ /dotnet\s+ef\s+migrations\s+add\s+EtiketEkle\b/ ⟫ dotnet ef migrations add EtiketEkle ...
+§K -p Infrastructure projesi ⟫ /-p\s+\S*Infrastructure\b/ ⟫ -p src/Asistan.Infrastructure
+§K -s Api projesi ⟫ /-s\s+\S*Api\b/ ⟫ -s src/Asistan.Api
+§K -o Persistence/Migrations ⟫ /-o\s+Persistence\/Migrations/ ⟫ üretilen dosyalar -o Persistence/Migrations klasörüne
+§K migrations script (SQL'i oku) ⟫ /dotnet\s+ef\s+migrations\s+script/ ⟫ dotnet ef migrations script -p ... -s ...
+§K database update (uygula) ⟫ /dotnet\s+ef\s+database\s+update/ ⟫ dotnet ef database update -p ... -s ...
+§COZUM
+dotnet ef migrations add EtiketEkle -p src/Asistan.Infrastructure -s src/Asistan.Api -o Persistence/Migrations
+dotnet ef migrations script -p src/Asistan.Infrastructure -s src/Asistan.Api
+dotnet ef database update -p src/Asistan.Infrastructure -s src/Asistan.Api
+
+§ADIM Unit test yaz (Moq + FluentAssertions) | cs
+§ANLAT
+Test üç parçadır: **Arrange** (hazırla), **Act** (çalıştır), **Assert** (doğrula). Depoyu `Mock` ile sahteleriz; veritabanı gerekmez, test milisaniyede biter. Hata yolunda **"kaydedilmedi"** diye de doğrula (`Times.Never`), yoksa bozuk veri kaydeden kod fark edilmez.
+§ORNEK
+[Fact]
+public async Task OlusturAsync_NegatifFiyat_HataVerirKaydetmez()
+{
+    var islem = () => _servis.OlusturAsync("kalem", -5);
+
+    await islem.Should().ThrowAsync<ArgumentException>();
+    _depo.Verify(d => d.EkleAsync(It.IsAny<Urun>(), It.IsAny<CancellationToken>()), Times.Never);
+}
+§GOREV
+`EtiketServisiTests` içine **boş ad** (`""`) verilince `ArgumentException` fırlatıldığını VE depoya hiç kayıt yapılmadığını doğrulayan bir test yaz.
+§BASLANGIC
+public class EtiketServisiTests
+{
+    private readonly Mock<IEtiketDeposu> _depo = new();
+    private readonly EtiketServisi _servis;
+
+    public EtiketServisiTests() => _servis = new EtiketServisi(_depo.Object);
+
+    // testi buraya yaz
+}
+§K [Fact] veya [Theory] ⟫ /\[(Fact|Theory)\]/ ⟫ test metodunun üstüne [Fact]
+§K async Task test metodu ⟫ /public\s+async\s+Task\s+\w+\s*\(/ ⟫ public async Task Adi() { ... }
+§K Servis metodu çağrılıyor ⟫ /_servis\.OlusturAsync\(/ ⟫ _servis.OlusturAsync("") ile çağır
+§K ArgumentException bekleniyor ⟫ /ThrowAsync<\s*ArgumentException\s*>/ ⟫ await islem.Should().ThrowAsync<ArgumentException>();
+§K Kaydedilmediği doğrulanıyor ⟫ /_depo\.Verify\([\s\S]*Times\.Never/ ⟫ _depo.Verify(..., Times.Never);
+§COZUM
+[Fact]
+public async Task OlusturAsync_BosAd_HataVerirKaydetmez()
+{
+    var islem = () => _servis.OlusturAsync("");
+
+    await islem.Should().ThrowAsync<ArgumentException>();
+    _depo.Verify(d => d.EkleAsync(It.IsAny<Etiket>(), It.IsAny<CancellationToken>()), Times.Never);
+}
+
+§ADIM DI kaydı | cs
+§ANLAT
+Arayüzü gerçek sınıfa **bağlayan** satır DI kaydıdır. Süreler: `Singleton` uygulama boyunca tek; `Scoped` her HTTP isteğinde bir tane; `Transient` her istenişte yeni. DbContext ve depolar **Scoped**'dur (DbContext thread-safe değildir).
+§ORNEK
+services.AddScoped<IUrunDeposu, UrunDeposu>();
+§GOREV
+`IEtiketDeposu` arayüzünü `EtiketDeposu` sınıfına, doğru ömürle (Scoped) bağla.
+§BASLANGIC
+// services.Add... satırını yaz
+§K AddScoped kullanıldı ⟫ /services\.AddScoped</ ⟫ DbContext/depo için Scoped kullan
+§K Arayüz → sınıf eşlemesi ⟫ /AddScoped<\s*IEtiketDeposu\s*,\s*EtiketDeposu\s*>\s*\(\s*\)\s*;/ ⟫ services.AddScoped<IEtiketDeposu, EtiketDeposu>();
+§COZUM
+services.AddScoped<IEtiketDeposu, EtiketDeposu>();
+
+§SORU Application katmanı neden EF Core'u bilmemeli?
+Testte veritabanı yerine sahte depo kullanabilmek için ve veritabanı değişirse (PostgreSQL → MongoDB) sadece Infrastructure'ı değiştirmek için. Bağımlılıklar **içe doğru** akar: Application, Infrastructure'a referans vermez.
+§SORU `Add` ile `SaveChangesAsync` arasındaki fark nedir?
+`Add` nesneyi bellekte "eklenecek" diye işaretler, SQL çalıştırmaz. SQL **`SaveChangesAsync`** ile çalışır. Birden çok değişiklik tek işlemde (transaction) kaydedilir.
+§SORU `migrations add` veritabanına dokunur mu? `-p` ile `-s` farkı?
+Hayır, sadece C# dosyası üretir. Veritabanına `database update` uygular. `-p` migration'ın yazılacağı proje, `-s` bağlantı ayarlarının okunduğu başlangıç projesidir.
+§SORU Scoped, Singleton, Transient farkı? DbContext hangisi?
+Singleton: uygulama boyunca tek. Scoped: istek başına bir tane. Transient: her istenişte yeni. DbContext **Scoped**'tur; thread-safe değildir. Scoped bir şey Singleton'a enjekte edilemez.
+§SORU N+1 problemi nedir?
+Listeyi çekip her satır için ayrı sorgu atmak. Çözüm: `Include` veya `Select` ile projeksiyon. `AsNoTracking` sadece okunacaksa izlemeyi kapatıp hızlandırır.
+
+§LAB 02 | Git / GitHub | Dal, merge, çakışma çözme, revert, .gitignore ve tag. Bunları bilmeden takımda çalışılmaz.
+
+§ADIM Depo aç ve ilk commit | sh
+§ANLAT
+Git'in 3 alanı vardır: **çalışma klasörü → (`git add`) → staging → (`git commit`) → depo**. Commit mesajı **Conventional Commits** biçiminde yazılır: `tip: açıklama` (feat, fix, docs, test, chore, ci, refactor). Böylece değişiklik günlüğü ve sürüm numarası otomatik üretilebilir.
+§ORNEK
+git init -b main
+echo "merhaba" > a.txt
+git add a.txt
+git commit -m "feat: a.txt eklendi"
+§GOREV
+Yeni bir depo aç (ana dalın adı `main` olsun), `notlar.txt` dosyasını oluştur, staging'e al ve Conventional Commits biçiminde commit et.
+§BASLANGIC
+# komutları buraya yaz
+§K git init (dal adı main) ⟫ /git\s+init\s+(-b|--initial-branch[ =])\s*main\b/ ⟫ git init -b main
+§K Dosya oluşturuldu ⟫ /notlar\.txt/ ⟫ echo "..." > notlar.txt
+§K git add notlar.txt ⟫ /git\s+add\s+\S*notlar\.txt/ ⟫ git add notlar.txt
+§K Conventional commit mesajı ⟫ /git\s+commit\s+(-\w+\s+)*-m\s+["'](feat|fix|docs|test|chore|ci|refactor)(\([^)]+\))?:\s+\S+/ ⟫ git commit -m "feat: notlar eklendi"
+§COZUM
+git init -b main
+echo "ilk not" > notlar.txt
+git add notlar.txt
+git commit -m "feat: notlar eklendi"
+
+§ADIM Dal aç ve --no-ff ile birleştir | sh
+§ANLAT
+Her özellik kendi dalında geliştirilir; ana dal temiz kalır. `--no-ff` "bu özellik şuradan geldi" diye bir **merge commit** bırakır, geçmişte özelliğin başı sonu görünür. `git switch -c` hem dal açar hem geçer.
+§ORNEK
+git switch -c ozellik/giris
+echo "giris" > giris.txt
+git add giris.txt
+git commit -m "feat: giris dosyasi"
+git switch main
+git merge --no-ff ozellik/giris
+§GOREV
+`ozellik/selam` adlı dal aç, `selam.txt` ekleyip commit et, `main`'e dön ve dalı `--no-ff` ile birleştir.
+§BASLANGIC
+# komutları buraya yaz
+§K Dal açıldı: ozellik/selam ⟫ /git\s+(switch\s+-c|checkout\s+-b)\s+ozellik\/selam\b/ ⟫ git switch -c ozellik/selam
+§K Dalda commit yapıldı ⟫ /git\s+commit\s+.*-m/ ⟫ git add + git commit -m "feat: ..."
+§K main'e dönüldü ⟫ /git\s+(switch|checkout)\s+main\b/ ⟫ git switch main
+§K --no-ff birleştirme ⟫ /git\s+merge\s+--no-ff\s+ozellik\/selam\b/ ⟫ git merge --no-ff ozellik/selam
+§K Sıra doğru: dal → commit → main → merge ⟫ /ozellik\/selam[\s\S]*git\s+commit[\s\S]*(switch|checkout)\s+main[\s\S]*merge/ ⟫ önce dalda çalış, sonra main'e dön, en son merge
+§COZUM
+git switch -c ozellik/selam
+echo "selam" > selam.txt
+git add selam.txt
+git commit -m "feat: selam dosyasi"
+git switch main
+git merge --no-ff ozellik/selam
+
+§ADIM Çakışmayı (conflict) çöz | txt
+§ANLAT
+İki dal **aynı satırı** değiştirirse git hangisini seçeceğini bilemez ve dosyaya işaret koyar: `<<<<<<<` (senin tarafın) / `=======` / `>>>>>>>` (gelen taraf). Sen dosyayı elle düzeltirsin: kalacak metni bırak, **üç işareti de sil**, sonra `git add` ve `git commit`.
+§ORNEK
+Çakışmalı dosya:
+
+<<<<<<< HEAD
+baslik: Merhaba
+=======
+baslik: Selam
+>>>>>>> ozellik/b
+
+İkisini birleştiren çözüm:
+
+baslik: Merhaba Selam
+§GOREV
+Aşağıdaki dosyada iki taraf da `renk` satırını değiştirmiş. Çakışmayı çöz: **AAA ve BBB değerlerinin ikisi de** dosyada kalsın, `selam dunya` satırı korunsun, hiçbir çakışma işareti kalmasın.
+§BASLANGIC
+<<<<<<< HEAD
+renk: AAA
+=======
+renk: BBB
+>>>>>>> ozellik/b
+selam dunya
+§K <<<<<<< işareti silindi ⟫ !/<<<<<<</ ⟫ <<<<<<< HEAD satırını sil
+§K ======= işareti silindi ⟫ !/^=======\s*$/m ⟫ ======= satırını sil
+§K >>>>>>> işareti silindi ⟫ !/>>>>>>>/ ⟫ >>>>>>> ozellik/b satırını sil
+§K AAA korundu ⟫ /AAA/ ⟫ AAA değeri dosyada kalmalı
+§K BBB korundu ⟫ /BBB/ ⟫ BBB değeri dosyada kalmalı
+§K "selam dunya" satırı korundu ⟫ /selam dunya/ ⟫ çakışmayan satırı silme
+§COZUM
+renk: AAA
+renk: BBB
+selam dunya
+
+§ADIM Geri alma: revert | sh
+§ANLAT
+**`git revert`**, bir commit'in **tersini yapan yeni bir commit** ekler; geçmişi silmez, paylaşılmış dalda güvenlidir. **`git reset --hard`** ise geçmişi geri sarar ve değişiklikleri siler; paylaşılmış dalda kullanılmaz. `--no-edit` mesaj editörünü açmaz.
+§ORNEK
+git log --oneline
+git revert 9f3c2ab --no-edit
+§GOREV
+Hash'i `a1b2c3d` olan commit'i, geçmişi bozmadan geri al (editör açılmasın). Önce geçmişe de bak.
+§BASLANGIC
+# komutları buraya yaz
+§K Geçmişe bakıldı ⟫ /git\s+log\b/ ⟫ git log --oneline
+§K git revert a1b2c3d ⟫ /git\s+revert\s+a1b2c3d\b/ ⟫ git revert a1b2c3d
+§K --no-edit ⟫ /--no-edit/ ⟫ sonuna --no-edit ekle
+§K reset --hard kullanılmadı ⟫ !/git\s+reset\s+--hard/ ⟫ geçmişi silmeden geri almak için reset değil revert
+§COZUM
+git log --oneline
+git revert a1b2c3d --no-edit
+
+§ADIM .gitignore ve sürüm etiketi | sh
+§ANLAT
+`.env` gibi gizli dosyalar `.gitignore`'a yazılır ve **asla commit edilmez**. Yanlışlıkla commit edersen anahtarı **hemen değiştir** (geçmişten silmek yetmez, sızmış sayılır). **Tag**, bir commit'e sürüm adı verir (`v0.1`).
+§ORNEK
+echo ".env" > .gitignore
+git add .gitignore
+git commit -m "chore: gitignore eklendi"
+git tag -a v1.0 -m "ilk surum"
+§GOREV
+`.env` dosyasını git'in görmezden geleceği şekilde ayarla ve commit'le; sonra açıklamalı bir `v0.1` etiketi at. `.env` dosyasını **asla** `git add` etme.
+§BASLANGIC
+# komutları buraya yaz
+§K .gitignore'a .env yazıldı ⟫ /["']?\.env["']?\s*>>?\s*\.gitignore/ ⟫ echo ".env" > .gitignore
+§K .gitignore staging'e alındı ⟫ /git\s+add\s+\.gitignore/ ⟫ git add .gitignore
+§K commit yapıldı ⟫ /git\s+commit\s+.*-m/ ⟫ git commit -m "chore: ..."
+§K Açıklamalı tag v0.1 ⟫ /git\s+tag\s+-a\s+v0\.1\b/ ⟫ git tag -a v0.1 -m "ilk surum"
+§K .env asla eklenmedi ⟫ !/git\s+add\s+(\S+\s+)*\.env\b/ ⟫ git add .env yazma!
+§COZUM
+echo ".env" > .gitignore
+git add .gitignore
+git commit -m "chore: gitignore eklendi"
+git tag -a v0.1 -m "ilk surum"
+
+§SORU `merge` ile `rebase` farkı nedir? Paylaşılan dalda neden rebase yapılmaz?
+Merge iki dalın ucunu birleştiren yeni bir commit ekler, geçmiş olduğu gibi kalır. Rebase commit'leri yeni bir tabana **yeniden yazar**; commit hash'leri değişir. Paylaşılan dalda başkaları eski hash'lere dayandığı için rebase onların geçmişini bozar.
+§SORU `reset --hard` ile `revert` farkı nedir?
+`revert` geri alan **yeni commit** ekler, geçmişi korur (paylaşılan dalda güvenli). `reset --hard` geçmişi geri sarar ve çalışma klasöründeki değişiklikleri siler (yalnızca yerelde).
+§SORU Yanlışlıkla `.env` commit ettin; ne yaparsın?
+Önce içindeki anahtarları **değiştir** (iptal edip yenisini al), çünkü sızmış sayılır. Sonra dosyayı takipten çıkar (`git rm --cached .env`), `.gitignore`'a ekle; geçmişten temizlemek istersen `git filter-repo` kullanılır.
+§SORU Fast-forward merge nedir, `--no-ff` neden kullanılır?
+Dal ana dalın hemen önündeyse git sadece işaretçiyi ilerletir (merge commit yok). `--no-ff` her zaman merge commit üretir; böylece özelliğin hangi commit'lerden oluştuğu geçmişte görünür kalır.
+§SORU `git stash` ve `git reflog` ne işe yarar?
+`stash` yarım kalan değişiklikleri geçici rafa kaldırır. `reflog` HEAD'in tüm geçmiş konumlarını tutar; yanlışlıkla silinen commit/dal bu sayede kurtarılır.
+
+§LAB 03 | Docker | Uygulamayı konteynerleştir: Dockerfile, güvenlik, .dockerignore, derleme, çalıştırma ve compose.
+
+§ADIM Dockerfile yaz | sh
+§ANLAT
+**İmaj** değişmez bir tariftir, **konteyner** o imajdan çalışan canlı süreçtir. Dockerfile satır satır imaj katmanı üretir. Önemli kurallar: küçük taban imaj (`-slim`), **root olmayan kullanıcı** (`USER`), `EXPOSE` sadece bilgi içindir (port açmaz), `CMD` konteyner başlayınca çalışan komuttur.
+§ORNEK
+FROM node:22-slim
+WORKDIR /app
+COPY server.js .
+RUN useradd -m uygulama
+USER uygulama
+EXPOSE 3000
+CMD ["node", "server.js"]
+§GOREV
+`app.py` adlı Python uygulaması için Dockerfile yaz: taban `python:3.12-slim`, çalışma klasörü `/app`, `app.py`'yi kopyala, `uygulama` adında **root olmayan** bir kullanıcı oluşturup ona geç, 8000 portunu bildir, `python app.py` ile başlat.
+§BASLANGIC
+# Dockerfile içeriğini buraya yaz
+§K Taban imaj python ⟫ /^\s*FROM\s+python:\S+/mi ⟫ FROM python:3.12-slim
+§K WORKDIR /app ⟫ /^\s*WORKDIR\s+\/app\b/mi ⟫ WORKDIR /app
+§K app.py kopyalandı ⟫ /^\s*COPY\s+app\.py\s+\S+/mi ⟫ COPY app.py .
+§K Kullanıcı oluşturuldu ⟫ /(useradd|adduser)\s+/ ⟫ RUN useradd -m uygulama
+§K Root olmayan kullanıcıya geçildi ⟫ /^\s*USER\s+(?!root\b|0\b)\S+/mi ⟫ USER uygulama (root değil)
+§K EXPOSE 8000 ⟫ /^\s*EXPOSE\s+8000\b/mi ⟫ EXPOSE 8000
+§K CMD ile başlatma ⟫ /^\s*CMD\s+(\[\s*"python"\s*,\s*"app\.py"\s*\]|python\s+app\.py)/mi ⟫ CMD ["python", "app.py"]
+§K USER, CMD'den önce ⟫ /USER\s+\S+[\s\S]*CMD\s/i ⟫ USER satırı CMD'den ÖNCE olmalı
+§COZUM
+FROM python:3.12-slim
+WORKDIR /app
+COPY app.py .
+RUN useradd -m uygulama
+USER uygulama
+EXPOSE 8000
+CMD ["python", "app.py"]
+
+§ADIM .dockerignore | txt
+§ANLAT
+`.dockerignore`, `COPY` sırasında imaja **girmemesi** gereken dosyaları söyler: imaj küçülür, derleme hızlanır ve **sırlar imaja sızmaz** (`.env` imajda kalırsa, imajı alan herkes okur).
+§ORNEK
+node_modules
+.git
+.env
+*.log
+§GOREV
+Python projesi için `.dockerignore` yaz: `.git`, `__pycache__` ve `.env` imaja girmesin (her biri ayrı satırda).
+§BASLANGIC
+# satır satır yaz
+§K .git dışarıda ⟫ /^\.git\s*$/m ⟫ .git ayrı bir satır olsun
+§K __pycache__ dışarıda ⟫ /^__pycache__\s*\/?\s*$/m ⟫ __pycache__ ayrı bir satır olsun
+§K .env dışarıda (sır sızmasın) ⟫ /^\.env\s*$/m ⟫ .env ayrı bir satır olsun
+§COZUM
+.git
+__pycache__
+.env
+
+§ADIM Derle, çalıştır, incele | sh
+§ANLAT
+`docker build -t ad .` imajı üretir (`-t` ad verir, sondaki `.` Dockerfile'ın bulunduğu klasördür). `docker run -d -p DIŞ:İÇ` konteyneri arka planda başlatır ve portu yönlendirir. `logs` çıktıyı, `exec` konteynerin içinde komut çalıştırmayı sağlar.
+§ORNEK
+docker build -t demo .
+docker run -d -p 18080:3000 --name demo1 demo
+docker logs demo1
+docker exec demo1 whoami
+docker rm -f demo1
+§GOREV
+`atolye-lab03` adıyla imajı derle; `deneme` adlı konteyner olarak arka planda çalıştır ve dışarıda **18099** portunu konteynerin **8000** portuna bağla; logları göster; içinde `id -u` çalıştır (0 olmamalı); sonunda konteyneri zorla sil.
+§BASLANGIC
+# komutları buraya yaz
+§K docker build -t atolye-lab03 . ⟫ /docker\s+build\s+-t\s+atolye-lab03\s+\./ ⟫ docker build -t atolye-lab03 .
+§K Arka planda çalıştır (-d) ⟫ /docker\s+run\s+[^\n]*-d\b/ ⟫ docker run -d ...
+§K Port eşlemesi 18099:8000 ⟫ /-p\s+18099:8000/ ⟫ -p 18099:8000 (dış:iç)
+§K Ad: deneme ⟫ /--name\s+deneme\b/ ⟫ --name deneme
+§K docker logs ⟫ /docker\s+logs\s+deneme/ ⟫ docker logs deneme
+§K docker exec ... id -u ⟫ /docker\s+exec\s+deneme\s+id\s+-u/ ⟫ docker exec deneme id -u
+§K docker rm -f ⟫ /docker\s+rm\s+-f\s+deneme/ ⟫ docker rm -f deneme
+§COZUM
+docker build -t atolye-lab03 .
+docker run -d -p 18099:8000 --name deneme atolye-lab03
+docker logs deneme
+docker exec deneme id -u
+docker rm -f deneme
+
+§ADIM docker-compose.yml | yaml
+§ANLAT
+Compose, birden çok konteyneri **tek dosyayla** tanımlar. Servisler birbirine **servis adıyla** ulaşır (`mongo`, `rabbitmq`); konteyner içinde `localhost` konteynerin **kendisidir**. Volume, konteyner silinse bile veriyi korur; `down -v` volume'ü de siler: veri gider.
+§ORNEK
+services:
+  web:
+    build: .
+    ports: ["18080:3000"]
+    environment:
+      MESAJ: "merhaba"
+    volumes:
+      - veri:/veri
+volumes:
+  veri:
+§GOREV
+`web` servisi yaz: mevcut klasörden derlensin, `18098` portu konteynerin `8000` portuna bağlansın, `MESAJ` adlı bir ortam değişkeni olsun, `veri` adlı bir volume `/veri` yoluna bağlansın (volume'ü dosyanın altında da tanımla).
+§BASLANGIC
+# docker-compose.yml içeriğini yaz
+§K services: ve web: ⟫ /^services:\s*\n\s+web:/m ⟫ services: → web:
+§K build: . ⟫ /build:\s*\./ ⟫ build: .
+§K Port 18098:8000 ⟫ /18098:8000/ ⟫ ports: ["18098:8000"]
+§K environment: MESAJ ⟫ /environment:[\s\S]*MESAJ/ ⟫ environment: → MESAJ: ...
+§K Volume bağlandı: veri:/veri ⟫ /veri:\/veri/ ⟫ volumes: - veri:/veri
+§K Volume en altta tanımlandı ⟫ /^volumes:\s*\n\s+veri:/m ⟫ dosyanın sonunda: volumes: ve altında veri:
+§COZUM
+services:
+  web:
+    build: .
+    ports: ["18098:8000"]
+    environment:
+      MESAJ: "compose ile calisiyorum"
+    volumes:
+      - veri:/veri
+volumes:
+  veri:
+
+§ADIM Konteynerler birbirine nasıl ulaşır? | txt
+§ANLAT
+Compose'taki her servis, **kendi adıyla** bir ağ adresi alır. API konteyneri MongoDB'ye `localhost` ile ulaşamaz, çünkü `localhost` API konteynerinin kendisidir.
+§ORNEK
+Servis adı `postgres`, port 5432 ise bağlantı adresi: `postgres:5432`
+§GOREV
+Compose dosyasında servis adı `mongo` ve portu `27017` olan MongoDB'ye, aynı ağdaki API konteynerinden hangi `host:port` ile bağlanırsın? Cevabı yaz.
+§BASLANGIC
+host:port
+§K mongo servis adı kullanıldı ⟫ /mongo:27017/ ⟫ servis adını kullan: mongo:27017
+§K localhost kullanılmadı ⟫ !/localhost|127\.0\.0\.1/ ⟫ localhost konteynerin kendisidir
+§COZUM
+mongo:27017
+
+§SORU İmaj ile konteyner farkı nedir? Volume neden var?
+İmaj değişmez şablon, konteyner onun çalışan kopyasıdır. Konteyner silinince içindeki dosyalar gider; kalıcı olması gereken veri **volume**'e yazılır.
+§SORU Multi-stage build nedir, neden kullanılır?
+Aynı Dockerfile'da birden çok `FROM` aşaması: ilkinde SDK ile derlenir, sonuncuya sadece derlenmiş çıktı kopyalanır. Nihai imaj küçük ve daha güvenli olur (derleme araçları içinde yok). .NET imajlarında standarttır.
+§SORU `CMD` ile `ENTRYPOINT` farkı? `COPY` ile `ADD` farkı?
+`ENTRYPOINT` sabit çalışan programı, `CMD` ona varsayılan argümanları verir ve çalıştırırken ezilebilir. `COPY` dosya kopyalar; `ADD` ayrıca URL indirir ve arşivi açar, bu yüzden genelde `COPY` tercih edilir.
+§SORU Katman önbelleği nasıl çalışır? Dockerfile'da satır sırası neden önemlidir?
+Her satır bir katmandır; değişmeyen katman önbellekten gelir. Bir katman değişirse sonrakiler yeniden yapılır. Bu yüzden nadiren değişen şeyler (bağımlılık dosyası, `restore`) üste, sık değişen kod alta yazılır.
+§SORU `docker compose down` ile `down -v` farkı?
+`down` konteyner ve ağları siler, volume'leri korur. `down -v` volume'leri de siler: veritabanı verisi gider.
+
+§LAB 04 | MongoDB | Belge ekle, sorgula, index, TTL, aggregation ve atomik güncelleme. Gerçek mongosh komutlarını yazıyorsun.
+
+§ADIM Belge ekle (insertMany) | js
+§ANLAT
+MongoDB'de tablo yerine **koleksiyon**, satır yerine **belge** (JSON benzeri) vardır. Şema zorunlu değildir; alan adları **büyük/küçük harfe duyarlıdır** (`Musteri` ≠ `musteri`). Koleksiyon ilk yazımda otomatik oluşur.
+§ORNEK
+db = db.getSiblingDB('magaza')
+db.urunler.insertMany([
+  { ad: 'kalem', fiyat: 5, stok: 100 },
+  { ad: 'defter', fiyat: 20, stok: 40 }
+])
+§GOREV
+`atolye` veritabanındaki `siparisler` koleksiyonuna **en az 3** sipariş ekle. Her birinde `musteri` (metin), `tutar` (sayı) ve `durum` (metin) alanı olsun.
+§BASLANGIC
+db = db.getSiblingDB('atolye')
+// siparişleri buraya ekle
+§K db.siparisler.insertMany ⟫ /db\.siparisler\.insertMany\(\s*\[/ ⟫ db.siparisler.insertMany([ {...}, {...} ])
+§K En az 3 müşteri alanı ⟫ /musteri\s*:[\s\S]*musteri\s*:[\s\S]*musteri\s*:/ ⟫ en az 3 belge ve her birinde musteri: '...'
+§K tutar sayı olarak ⟫ /tutar\s*:\s*\d+/ ⟫ tutar: 120 (tırnaksız sayı)
+§K durum metin olarak ⟫ /durum\s*:\s*['"]\w+['"]/ ⟫ durum: 'bekliyor'
+§COZUM
+db = db.getSiblingDB('atolye')
+db.siparisler.insertMany([
+  { musteri: 'Ali',  tutar: 120, durum: 'bekliyor' },
+  { musteri: 'Ayse', tutar: 80,  durum: 'bekliyor' },
+  { musteri: 'Can',  tutar: 300, durum: 'tamamlandi' }
+])
+
+§ADIM Sorgula ve sırala | js
+§ANLAT
+`find(filtre)` eşleşen belgeleri getirir. Karşılaştırma operatörleri `$` ile başlar: `$gt` (büyük), `$lt`, `$gte`, `$in`. `sort({ alan: -1 })` azalan sıralar (`1` artan). `limit(n)` sayıyı kısıtlar.
+§ORNEK
+db.urunler.find({ fiyat: { $gt: 10 }, stok: { $lt: 50 } }).sort({ fiyat: -1 })
+§GOREV
+Tutarı **100'den büyük** ve durumu `'bekliyor'` olan siparişleri bul; **tutara göre azalan** sırala.
+§BASLANGIC
+// sorguyu buraya yaz
+§K db.siparisler.find( ⟫ /db\.siparisler\.find\(/ ⟫ db.siparisler.find({ ... })
+§K tutar $gt 100 ⟫ /tutar\s*:\s*\{\s*\$gt\s*:\s*100\s*\}/ ⟫ tutar: { $gt: 100 }
+§K durum 'bekliyor' ⟫ /durum\s*:\s*['"]bekliyor['"]/ ⟫ durum: 'bekliyor'
+§K Azalan sıralama ⟫ /\.sort\(\s*\{\s*tutar\s*:\s*-1\s*\}\s*\)/ ⟫ .sort({ tutar: -1 })
+§COZUM
+db.siparisler.find({ tutar: { $gt: 100 }, durum: 'bekliyor' }).sort({ tutar: -1 })
+
+§ADIM Index kur | js
+§ANLAT
+Index'siz sorgu tüm koleksiyonu tarar (**COLLSCAN**), index'li sorgu doğrudan bulur (**IXSCAN**). Biz 30.000 belgede ölçtük: 22 ms → 3 ms. Bedeli: yazma biraz yavaşlar, bellek harcar. **Bileşik index'te sıra önemlidir**: önce eşitlik alanı, sonra sıralama alanı.
+§ORNEK
+db.urunler.createIndex({ ad: 1 })
+db.urunler.createIndex({ stok: 1, fiyat: -1 })
+db.urunler.getIndexes()
+§GOREV
+`siparisler` için iki index kur: `musteri` üzerinde tek alanlı (artan) ve `{ durum: 1, tutar: -1 }` bileşik index.
+§BASLANGIC
+// index komutlarını buraya yaz
+§K musteri index'i ⟫ /db\.siparisler\.createIndex\(\s*\{\s*musteri\s*:\s*1\s*\}\s*\)/ ⟫ db.siparisler.createIndex({ musteri: 1 })
+§K Bileşik index {durum:1, tutar:-1} ⟫ /createIndex\(\s*\{\s*durum\s*:\s*1\s*,\s*tutar\s*:\s*-1\s*\}\s*\)/ ⟫ createIndex({ durum: 1, tutar: -1 })
+§COZUM
+db.siparisler.createIndex({ musteri: 1 })
+db.siparisler.createIndex({ durum: 1, tutar: -1 })
+
+§ADIM TTL index (otomatik silme) | js
+§ANLAT
+**TTL index** belirli süre sonra belgeyi otomatik siler (oturum, geçici veri). Alan **Date tipinde** olmalı (metin çalışmaz). Mongo yaklaşık her dakika temizlik yapar.
+§ORNEK
+db.oturumlar.createIndex({ olusturulma: 1 }, { expireAfterSeconds: 7200 })
+§GOREV
+`siparisler` koleksiyonunda `olusturulma` alanı üzerinde, belgeleri **3600 saniye** sonra silen TTL index kur.
+§BASLANGIC
+// TTL index komutunu yaz
+§K olusturulma üzerinde index ⟫ /createIndex\(\s*\{\s*olusturulma\s*:\s*1\s*\}/ ⟫ createIndex({ olusturulma: 1 }, ...)
+§K expireAfterSeconds: 3600 ⟫ /expireAfterSeconds\s*:\s*3600/ ⟫ { expireAfterSeconds: 3600 }
+§COZUM
+db.siparisler.createIndex({ olusturulma: 1 }, { expireAfterSeconds: 3600 })
+
+§ADIM Aggregation: müşteri başına toplam | js
+§ANLAT
+**Aggregation pipeline** bir boru hattıdır: her aşama (`$match`, `$group`, `$sort`, `$out`) bir öncekinin çıktısını işler. `$group` ile `_id` alanına göre gruplanır, `$sum` toplar. Alan başvurusunda `$` kullanılır: `'$tutar'`. `$out` sonucu yeni koleksiyona yazar.
+§ORNEK
+db.urunler.aggregate([
+  { $group: { _id: '$stok', toplamFiyat: { $sum: '$fiyat' } } },
+  { $out: 'stok_ozet' }
+])
+§GOREV
+Siparişleri `musteri`'ye göre grupla, her müşterinin `tutar` toplamını `toplam` alanında hesapla ve sonucu `musteri_toplam` koleksiyonuna yaz.
+§BASLANGIC
+// pipeline'ı buraya yaz
+§K aggregate([ ⟫ /db\.siparisler\.aggregate\(\s*\[/ ⟫ db.siparisler.aggregate([ ... ])
+§K $group, _id: '$musteri' ⟫ /\$group\s*:\s*\{\s*_id\s*:\s*['"]\$musteri['"]/ ⟫ { $group: { _id: '$musteri', ... } }
+§K toplam: { $sum: '$tutar' } ⟫ /toplam\s*:\s*\{\s*\$sum\s*:\s*['"]\$tutar['"]\s*\}/ ⟫ toplam: { $sum: '$tutar' }
+§K $out: 'musteri_toplam' ⟫ /\$out\s*:\s*['"]musteri_toplam['"]/ ⟫ { $out: 'musteri_toplam' }
+§COZUM
+db.siparisler.aggregate([
+  { $group: { _id: '$musteri', toplam: { $sum: '$tutar' } } },
+  { $out: 'musteri_toplam' }
+])
+
+§ADIM Atomik güncelleme | js
+§ANLAT
+`updateOne(filtre, { $set: {...} })` belgeyi **tek atomik işlemde** günceller. "Oku, değiştir, geri yaz" yöntemi iki işçi aynı anda çalışınca birbirinin üzerine yazar (yarış durumu); `updateOne` bunu önler. Projede `IslemeAlAsync` bu yüzden böyle yazıldı.
+§ORNEK
+db.urunler.updateOne({ ad: 'kalem' }, { $set: { stok: 99, guncellenme: new Date() } })
+§GOREV
+Müşterisi `'Can'` olan siparişi `durum: 'tamamlandi'` yap ve `guncellenme` alanına şimdiki zamanı yaz.
+§BASLANGIC
+// güncellemeyi buraya yaz
+§K updateOne kullanıldı ⟫ /db\.siparisler\.updateOne\(\s*\{\s*musteri\s*:\s*['"]Can['"]\s*\}/ ⟫ db.siparisler.updateOne({ musteri: 'Can' }, ...)
+§K $set operatörü ⟫ /\{\s*\$set\s*:/ ⟫ { $set: { ... } }
+§K durum: 'tamamlandi' ⟫ /durum\s*:\s*['"]tamamlandi['"]/ ⟫ durum: 'tamamlandi'
+§K guncellenme: new Date() ⟫ /guncellenme\s*:\s*new\s+Date\(\s*\)/ ⟫ guncellenme: new Date()
+§COZUM
+db.siparisler.updateOne({ musteri: 'Can' }, { $set: { durum: 'tamamlandi', guncellenme: new Date() } })
+
+§SORU SQL mi MongoDB mi? Ne zaman hangisi?
+İlişkili, tutarlı, transaction ağırlıklı veri (kullanıcı, abonelik, fatura) için SQL. Esnek şemalı, yazma ağırlıklı, iç içe veri (mesaj geçmişi, log, iş kayıtları) için MongoDB. Projede ikisi birlikte kullanılıyor.
+§SORU Index'in maliyeti nedir? `explain` ile ne görürsün?
+Yazma yavaşlar, bellek ve disk harcar; gereksiz index açılmaz. `explain('executionStats')` sorgunun **IXSCAN** (index) mi **COLLSCAN** (tam tarama) mı kullandığını ve kaç belge incelediğini gösterir.
+§SORU TTL index neye yarar?
+Alan değeri + süre dolunca belgeyi otomatik siler: oturum, geçici kod, eski iş kaydı temizliği. Alan `Date` tipinde olmalıdır.
+§SORU Gömme (embed) mi, referans mı?
+Birlikte okunan ve birlikte değişen veri belgenin **içine gömülür** (hızlı okuma). Çok büyüyen veya bağımsız değişen veri **ayrı koleksiyonda** referansla tutulur. Belge boyutu limiti 16 MB'tır.
+§SORU Neden `updateOne` + `$set`, oku-değiştir-yaz değil?
+`updateOne` sunucuda atomiktir; iki işçi aynı anda çalışsa da biri diğerinin değişikliğini ezmez. Oku-değiştir-yaz ise yarış durumuna açıktır.

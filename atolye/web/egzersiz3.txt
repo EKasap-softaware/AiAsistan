@@ -1,0 +1,372 @@
+§LAB 08 | LangFlow | Sürükle-bırak LLM akışı: prompt şablonu, akışı API ile çağırma, sırları güvende tutma.
+
+§ADIM Prompt şablonu yaz | txt
+§ANLAT
+LangFlow'da akış bileşenlerden (node) kurulur: **Chat Input → Prompt → Language Model → Chat Output**. Prompt bileşeni bir şablondur; `{soru}` gibi **süslü parantez içindeki ad bir giriş değişkeni** olur ve Chat Input'a bağlanır. Kullanıcı girdisini her zaman ayrı bir değişken olarak ver, talimat metnine yapıştırma (prompt injection riskini azaltır).
+§ORNEK
+Sen yardımsever bir muhasebe asistanısın. Sadece verilen konuda, kısa cevap ver.
+
+Konu: {konu}
+§GOREV
+Prompt bileşeni için şablon yaz: modele **kısa** ve **Türkçe** cevap vermesini söyle, kullanıcı sorusu `{soru}` değişkeni olarak yer alsın.
+§BASLANGIC
+şablonu buraya yaz
+§K {soru} değişkeni var ⟫ /\{soru\}/ ⟫ şablonda {soru} yazan bir yer olsun
+§K "Türkçe" isteniyor ⟫ /türkçe|turkce/i ⟫ modele Türkçe cevap vermesini söyle
+§K "kısa" cevap isteniyor ⟫ /kısa|kisa/i ⟫ modele kısa cevap vermesini söyle
+§COZUM
+Sen yardımsever bir asistansın. Kısa ve Türkçe cevap ver.
+
+Soru: {soru}
+
+§ADIM Akışı API ile çağır | sh
+§ANLAT
+Her akışın bir **flow id**'si vardır ve `POST /api/v1/run/<flow_id>` ile çalıştırılır. Kimlik doğrulama `x-api-key` başlığıyla yapılır; anahtarı komuta **düz yazma**, ortam değişkeninden oku. Gövdede `input_value` soru metnidir; `input_type` ve `output_type` genelde `chat`'tir.
+§ORNEK
+curl -X POST "http://localhost:7860/api/v1/run/ORNEK-ID" -H "Content-Type: application/json" -H "x-api-key: $LANGFLOW_API_KEY" -d '{"input_value":"merhaba","input_type":"chat","output_type":"chat"}'
+§GOREV
+`localhost:7860`'daki LangFlow'da `ABC123` id'li akışı çalıştır: soru `"KDV nedir?"`, giriş ve çıkış tipi `chat`, anahtar `$LANGFLOW_API_KEY` ortam değişkeninden gelsin.
+§BASLANGIC
+# curl komutunu buraya yaz
+§K POST ve doğru adres ⟫ /curl\s+[^\n]*-X\s+POST[^\n]*localhost:7860\/api\/v1\/run\/ABC123|curl\s+[^\n]*localhost:7860\/api\/v1\/run\/ABC123[^\n]*-X\s+POST/ ⟫ curl -X POST "http://localhost:7860/api/v1/run/ABC123"
+§K x-api-key başlığı ⟫ /-H\s+["']x-api-key:\s*\$\{?LANGFLOW_API_KEY\}?["']/i ⟫ -H "x-api-key: $LANGFLOW_API_KEY" (anahtarı düz yazma)
+§K input_value = soru ⟫ /"input_value"\s*:\s*"KDV nedir\?"/ ⟫ "input_value":"KDV nedir?"
+§K input_type chat ⟫ /"input_type"\s*:\s*"chat"/ ⟫ "input_type":"chat"
+§K output_type chat ⟫ /"output_type"\s*:\s*"chat"/ ⟫ "output_type":"chat"
+§COZUM
+curl -X POST "http://localhost:7860/api/v1/run/ABC123" -H "Content-Type: application/json" -H "x-api-key: $LANGFLOW_API_KEY" -d '{"input_value":"KDV nedir?","input_type":"chat","output_type":"chat"}'
+
+§ADIM LiteLLM'e hangi adresle bağlanılır? | txt
+§ANLAT
+LangFlow da LiteLLM de **Docker konteyneridir**. Konteyner içinde `localhost` konteynerin **kendisidir**; diğer servise **servis adıyla** ulaşılır. Language Model (OpenAI) bileşeninin *Base URL* alanına bu adres yazılır.
+§ORNEK
+LangFlow'dan `postgres` servisine: `postgres:5432` (localhost:5432 DEĞİL).
+§GOREV
+LangFlow'daki Language Model bileşenine, aynı compose ağındaki `litellm` servisine (port 4000, OpenAI uyumlu yol `/v1`) bağlanması için yazılacak **Base URL**'i yaz.
+§BASLANGIC
+http://
+§K litellm servis adı ve port ⟫ /litellm:4000/ ⟫ servis adını kullan: litellm:4000
+§K /v1 yolu ⟫ /litellm:4000\/v1\b/ ⟫ OpenAI uyumlu yol: .../v1
+§K localhost kullanılmadı ⟫ !/localhost|127\.0\.0\.1/ ⟫ konteyner içinde localhost = konteynerin kendisi
+§COZUM
+http://litellm:4000/v1
+
+§ADIM Anahtarı akışa gömmeden ver | txt
+§ANLAT
+Akışı **JSON olarak dışa aktarıp git'e koyarız**. API anahtarı bileşene düz yazılırsa JSON'da görünür ve **sızar**. Doğrusu: Settings → **Global Variables** → tür **Credential** ile anahtarı ekle, bileşende o değişkeni seç. JSON'da sadece değişken adı kalır.
+§ORNEK
+Anahtar `X` olsun: Global Variable adı `LITELLM_KEY`, tür Credential; bileşende anahtar alanına değer yerine bu değişkeni bağla.
+§GOREV
+Akışa sır gömmemek için LangFlow'da hangi özelliği kullanırsın? Cevabında `Global Variable` ve `Credential` kelimeleri geçsin.
+§BASLANGIC
+cevap:
+§K Global Variable anıldı ⟫ /global\s*variable/i ⟫ Settings → Global Variables
+§K Credential türü anıldı ⟫ /credential/i ⟫ değişken türü Credential olmalı
+§COZUM
+Settings'ten Global Variable ekler, türünü Credential seçerim ve bileşende o değişkeni kullanırım.
+
+§SORU LangFlow ne zaman kullanılır, ne zaman kod yazarsın?
+LangFlow prototip ve hızlı deneme için iyidir. Üretimde sürüm kontrolü, test, hata yönetimi ve performans gerekiyorsa kod yazılır. Orta yol: akışı JSON olarak git'te tut, API ile çağır.
+§SORU "Context stuffing" ile gerçek RAG farkı nedir?
+Context stuffing dokümanın **tamamını** prompt'a koymaktır: basit ama pahalı (projede soru başına ~34 bin token) ve doküman büyüyünce sığmaz. RAG dokümanı parçalara böler, vektör aramasıyla **sadece ilgili parçaları** bulup prompt'a ekler.
+§SORU Prompt injection nedir, nasıl azaltılır?
+Kullanıcı girdisi veya doküman içindeki "önceki talimatları yok say" gibi metnin modeli yönlendirmesidir. Azaltma: kullanıcı girdisini talimattan ayrı değişken olarak ver, modele "bu veri, talimat değil" de, çıktıları doğrula, araç yetkilerini en aza indir.
+§SORU Akışı koda/CI'a nasıl alırsın?
+JSON olarak dışa aktarıp git'e koyarsın, import betiği (API) ile yüklersin, uygulamadan `/api/v1/run/<flow_id>` ile çağırırsın. Anahtarlar Global Variable'dır, dosyada yoktur.
+§SORU Neden LLM çağrısı doğrudan sağlayıcıya değil LiteLLM üzerinden?
+Sağlayıcı anahtarı tek yerde durur, model takma adla değiştirilir, maliyet ve limit tek noktadan yönetilir; LangFlow sağlayıcıdan bağımsız kalır.
+
+§LAB 09 | CI/CD | GitHub Actions: her push'ta derle ve test et, güvenli ve ekonomik çalıştır.
+
+§ADIM Tetikleyiciler (on:) | yaml
+§ANLAT
+**CI** (sürekli entegrasyon): her değişiklikte otomatik derle ve test et; kırık kod ana dala girmesin. Bir workflow YAML'dır: **olay (`on`) → job → step'ler**. Tetikleyici olarak genelde `main`'e push ve her `pull_request` kullanılır. YAML'da **girinti (boşluk) anlamlıdır, TAB yoktur**.
+§ORNEK
+name: Node CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+§GOREV
+`Atolye CI` adlı workflow'un tetikleyicisini yaz: `main` dalına her push ve her pull request'te çalışsın.
+§BASLANGIC
+name: Atolye CI
+
+§K on: bölümü ⟫ /^on:/m ⟫ on: ile başlayan blok
+§K push → main dalı ⟫ /push:\s*\n\s+branches:\s*\[\s*main\s*\]|push:\s*\n\s+branches:\s*\n\s+-\s*main/ ⟫ push:\n    branches: [main]
+§K pull_request ⟫ /pull_request:/ ⟫ pull_request:
+§COZUM
+name: Atolye CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+§ADIM Job ve ilk adımlar | yaml
+§ANLAT
+Her **job** temiz bir sanal makinede çalışır (`runs-on`). İlk adım **her zaman** `actions/checkout`'tur: kodu makineye indirir. Sonra çalışma ortamı kurulur (`actions/setup-dotnet`). Sürüm numarasını sabitle (`@v4`), `@main` yazma: bir gün davranışı değişir.
+§ORNEK
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+§GOREV
+`test` adlı bir job yaz: `ubuntu-latest` üzerinde çalışsın; önce `actions/checkout@v4`, sonra `actions/setup-dotnet@v4` ile **.NET 9** kurulsun (`dotnet-version: 9.0.x`).
+§BASLANGIC
+jobs:
+§K jobs: ve test: ⟫ /^jobs:\s*\n\s+test:/m ⟫ jobs: → test:
+§K runs-on: ubuntu-latest ⟫ /runs-on:\s*ubuntu-latest/ ⟫ runs-on: ubuntu-latest
+§K actions/checkout@v4 ⟫ /uses:\s*actions\/checkout@v4/ ⟫ - uses: actions/checkout@v4
+§K actions/setup-dotnet@v4 ⟫ /uses:\s*actions\/setup-dotnet@v4/ ⟫ - uses: actions/setup-dotnet@v4
+§K dotnet-version 9 ⟫ /dotnet-version:\s*['"]?9\.0\.x/ ⟫ with: dotnet-version: 9.0.x
+§K checkout, setup-dotnet'ten önce ⟫ /checkout@v4[\s\S]*setup-dotnet@v4/ ⟫ önce kodu indir, sonra .NET kur
+§COZUM
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+§ADIM Derle, test et, önbellek | yaml
+§ANLAT
+`run:` kabuk komutu çalıştırır. Önce derle, **aynı derlemeyi** test et: `--no-build` ile tekrar derlemeyi atla, süre kazan. NuGet paketlerini her seferinde yeniden indirmemek için **önbellek** (`cache: true`) kullan; anahtarı proje dosyalarına bağlanır.
+§ORNEK
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+§GOREV
+`setup-dotnet` adımına NuGet önbelleğini aç (`cache: true`); ardından `dotnet build --no-restore -c Release` ve `dotnet test --no-build -c Release` adımlarını ekle.
+§BASLANGIC
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+§K cache: true ⟫ /cache:\s*true/ ⟫ setup-dotnet with: içine cache: true
+§K dotnet build adımı ⟫ /-\s*run:\s*dotnet\s+build\b/ ⟫ - run: dotnet build --no-restore -c Release
+§K dotnet test adımı ⟫ /-\s*run:\s*dotnet\s+test\b/ ⟫ - run: dotnet test --no-build -c Release
+§K Test, derlemeden sonra ⟫ /dotnet\s+build[\s\S]*dotnet\s+test/ ⟫ önce build, sonra test
+§K --no-build ile tekrar derlemeyi atla ⟫ /dotnet\s+test\s+[^\n]*--no-build/ ⟫ dotnet test --no-build
+§COZUM
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+          cache: true
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+
+§ADIM Güvenlik ve maliyet ayarları | yaml
+§ANLAT
+**En az yetki**: `permissions: contents: read` ile iş akışının token'ı sadece okuyabilir (ele geçirilirse zarar sınırlı). **`timeout-minutes`**: takılan iş saatlerce faturayı şişirmesin. **`concurrency`**: aynı dalda yeni push gelince eski çalışmayı iptal et.
+§ORNEK
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    timeout-minutes: 10
+§GOREV
+Dosyanın üstüne `contents: read` yetkisini, `concurrency` bloğunu (aynı dalda eski çalışma iptal edilsin) ve `test` job'ına **15 dakikalık** zaman sınırını ekle.
+§BASLANGIC
+name: Atolye CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+§K permissions: contents: read ⟫ /^permissions:\s*\n\s+contents:\s*read/m ⟫ permissions:\n  contents: read
+§K concurrency: bloğu ⟫ /^concurrency:\s*\n\s+group:\s*\S+/m ⟫ concurrency:\n  group: ...
+§K cancel-in-progress: true ⟫ /cancel-in-progress:\s*true/ ⟫ cancel-in-progress: true
+§K timeout-minutes: 15 ⟫ /timeout-minutes:\s*15\b/ ⟫ job içine timeout-minutes: 15
+§COZUM
+name: Atolye CI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+§ADIM Sırları güvenle kullan | yaml
+§ANLAT
+Parola, token, API anahtarı workflow dosyasına **asla düz yazılmaz** (repo herkese açık olabilir, geçmişte kalır). GitHub'da Settings → Secrets bölümüne eklenir ve `${{ secrets.ADI }}` ile okunur. Log'larda otomatik gizlenir. Fork'tan gelen PR'larda secret'lar **boştur**.
+§ORNEK
+      - run: ./deploy.sh
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+§GOREV
+Bir adıma `LITELLM_KEY` adlı ortam değişkeni ver; değeri `LITELLM_MASTER_KEY` adlı **secret**'tan gelsin (adım: `- run: dotnet test`).
+§BASLANGIC
+      - run: dotnet test
+§K env: bloğu ⟫ /env:\s*\n\s+LITELLM_KEY:/ ⟫ env:\n  LITELLM_KEY: ...
+§K secrets.LITELLM_MASTER_KEY ⟫ /\$\{\{\s*secrets\.LITELLM_MASTER_KEY\s*\}\}/ ⟫ ${{ secrets.LITELLM_MASTER_KEY }}
+§K Düz yazılmış anahtar yok ⟫ !/LITELLM_KEY:\s*["']?[A-Za-z0-9_-]{12,}/ ⟫ değeri düz yazma, secrets ile oku
+§COZUM
+      - run: dotnet test
+        env:
+          LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+
+§SORU CI ile CD farkı? Continuous delivery ile deployment farkı?
+CI: her değişiklikte otomatik derle + test. CD: testten geçen sürümü paketleyip yayına hazır tutmak. Continuous **delivery**'de yayın bir onayla (manuel) yapılır; continuous **deployment**'ta her yeşil değişiklik otomatik yayına gider.
+§SORU Neden `permissions` kısıtlanır? `GITHUB_TOKEN` nedir?
+Her çalışmaya otomatik verilen geçici token'dır. Varsayılan yetkisi geniş olabilir; token ele geçirilirse (kötü bir action, enjeksiyon) zarar vermesin diye `contents: read` gibi en az yetki verilir.
+§SORU Cache nasıl çalışır? Anahtarı neye bağlarsın?
+Bağımlılık klasörü bir anahtarla saklanır (ör. `*.csproj` dosyalarının hash'i). Dosyalar değişmediyse önbellekten gelir, değiştiyse yenisi oluşturulur.
+§SORU Matrix build nedir?
+Aynı job'ı farklı değerlerle (OS, sürüm, proje) paralel çalıştırmaktır. Projede `cd.yml` api ve worker imajlarını matrix ile paralel derler.
+§SORU Pipeline'da imaj etiketi neden `latest` yerine commit SHA?
+`latest` hangi kodun çalıştığını söylemez ve geri dönmek zordur. SHA etiketi her imajı bir commit'e bağlar: tekrarlanabilir dağıtım ve kolay geri alma.
+§SORU Ortam (environment) onayı ve `workflow_run` ne işe yarar?
+`environment: production` yayından önce insan onayı ve ortama özel secret sağlar. `workflow_run` bir workflow bitince diğerini tetikler (CI yeşilse CD çalışsın).
+
+§LAB 10 | Claude CLI / Skills / MCP / Markdown | Claude Code'a projeyi öğreten dosyaları yaz: skill, slash komutu, CLAUDE.md kuralı, MCP sunucusu.
+
+§ADIM Skill yaz (SKILL.md) | txt
+§ANLAT
+**Skill**, belirli bir iş için adım adım talimattır: `.claude/skills/<ad>/SKILL.md`. Üstte **frontmatter** (`---` arası) vardır: `name` klasör adıyla aynı olur, `description` Claude'un skill'i **ne zaman seçeceğini** belirler. Belirsiz description = skill hiç seçilmez. Gövdede numaralı, uygulanabilir adımlar yazılır.
+§ORNEK
+---
+name: sunum-hazirla
+description: Kullanıcı bir toplantı özetini sunuma çevirmek istediğinde kullan. Başlık, 5 madde ve bir sonuç slaytı üretir.
+---
+1. Özetteki ana konuyu bul.
+2. Her slayt için tek bir mesaj yaz.
+3. Son slayta bir aksiyon listesi ekle.
+§GOREV
+`test-yaz` skill'ini yaz: **yeni bir servis için unit test yazarken** kullanılsın (description bunu net söylesin, en az 50 karakter), gövdede en az **3 numaralı adım** olsun.
+§BASLANGIC
+---
+name:
+description:
+---
+
+§K Frontmatter açılış ve kapanış (---) ⟫ /^---\s*\n[\s\S]*?\n---/ ⟫ dosya --- ile başlayıp --- ile kapanan frontmatter içersin
+§K name: test-yaz ⟫ /^name:\s*test-yaz\s*$/m ⟫ name: test-yaz (klasör adıyla aynı)
+§K description en az 50 karakter ⟫ /^description:\s*\S.{49,}/m ⟫ description: Yeni bir servis için unit test yazarken kullan. ... (NE yapar + NE ZAMAN)
+§K description "ne zaman"ı söylüyor ⟫ /^description:.*(kullan|yazarken|istendiğinde|zaman)/mi ⟫ "...yazarken kullan" gibi bir ifade ekle
+§K Numaralı adımlar (1. 2. 3.) ⟫ /^\s*1\.\s+\S[\s\S]*^\s*2\.\s+\S[\s\S]*^\s*3\.\s+\S/m ⟫ gövdeye 1. 2. 3. şeklinde adımlar yaz
+§COZUM
+---
+name: test-yaz
+description: Yeni bir servis sınıfı için unit test yazarken kullan. xUnit, Moq ve FluentAssertions ile AAA düzeninde test üretir.
+---
+1. Servisin bağımlılıklarını (arayüzleri) bul.
+2. Her bağımlılığı Moq ile sahtele.
+3. Geçerli durum, boş girdi ve sınır değer için ayrı test yaz.
+4. Hata durumunda kaydın yapılmadığını (Times.Never) doğrula.
+
+§ADIM Slash komutu | md
+§ANLAT
+**Slash komutu**, yazıp `/ad argüman` ile çağırdığın hazır bir prompt'tur: `.claude/commands/<ad>.md`. Dosya adı komut adı olur. Metin içinde **`$ARGUMENTS`** yerine yazdığın argüman girer. Skill'den farkı: skill'i Claude kendisi seçer, komutu sen çağırırsın.
+§ORNEK
+Şu dosyadaki TODO yorumlarını listele ve her birine öncelik ver: $ARGUMENTS
+§GOREV
+`/ozet <dosya>` komutunun dosya içeriğini yaz: verilen dosyayı **5 maddede özetlesin** ve riskli yerleri belirtsin; dosya adı `$ARGUMENTS` ile gelsin.
+§BASLANGIC
+komut metnini buraya yaz
+§K $ARGUMENTS kullanıldı ⟫ /\$ARGUMENTS/ ⟫ dosya adının geleceği yere $ARGUMENTS yaz
+§K Özet isteniyor ⟫ /özet|ozet/i ⟫ komut "özetle" demeli
+§K 5 madde isteniyor ⟫ /5\s*madde|beş\s*madde/i ⟫ "5 maddede" yaz
+§K Riskli yerler isteniyor ⟫ /risk/i ⟫ riskli yerleri de belirtmesini iste
+§COZUM
+Şu dosyayı 5 maddede özetle ve riskli yerleri belirt: $ARGUMENTS
+
+§ADIM CLAUDE.md kuralı | md
+§ANLAT
+**CLAUDE.md**, projenin kalıcı kurallarıdır; her oturumda yüklenir. **Kısa, emir kipinde, doğrulanabilir** yaz ("her servise unit test yaz"). Uzun açıklama yazma: yer kaplar ve unutulur. Kod, yapı gibi zaten dosyalardan okunabilen şeyleri yazma; okunamayanı yaz (kural, tuzak, komut).
+§ORNEK
+## Güvenlik
+- Sırları koda yazma, ortam değişkeninden oku.
+- Dış çağrılara zaman sınırı koy.
+- Hata yutma, yukarı fırlat.
+§GOREV
+CLAUDE.md'ye `## Test` başlıklı, **en az 3 maddelik** bir bölüm yaz (unit test, Moq ile sahtelemek, hata yolunda `Times.Never`).
+§BASLANGIC
+## Test
+
+§K ## Test başlığı ⟫ /^##\s+Test\b/m ⟫ ## Test
+§K En az 3 madde ⟫ /^\s*-\s+\S[\s\S]*^\s*-\s+\S[\s\S]*^\s*-\s+\S/m ⟫ üç satır, her biri "- " ile başlasın
+§K Moq anılıyor ⟫ /moq/i ⟫ dış sistemleri Moq ile sahtele maddesi ekle
+§K Times.Never anılıyor ⟫ /Times\.Never/ ⟫ hata yolunda Times.Never maddesi ekle
+§COZUM
+## Test
+- Her yeni servise unit test yaz.
+- Dış sistemleri Moq ile sahtele.
+- Hata yolunda Times.Never ile kaydın yapılmadığını doğrula.
+
+§ADIM MCP sunucusu ekle (.mcp.json) | json
+§ANLAT
+**MCP**, Claude'u dış araç ve veriye bağlayan standart protokoldür: veritabanı, GitHub, dosya sistemi. Sunucular projedeki `.mcp.json` dosyasında tanımlanır: çalıştırılacak `command` ve `args`. **Güvenlik**: salt-okunur başla, üretim verisine bağlama, **sırları dosyaya yazma** (`${ORTAM_DEGISKENI}` ile oku). Araç çıktısı da güvenilmez girdidir (prompt injection).
+§ORNEK
+{
+  "mcpServers": {
+    "ornek": {
+      "command": "npx",
+      "args": ["-y", "ornek-mcp-sunucusu"],
+      "env": { "API_TOKEN": "${ORNEK_TOKEN}" }
+    }
+  }
+}
+§GOREV
+`dosya-okuyucu` adında bir MCP sunucusu tanımla: `npx` ile `@modelcontextprotocol/server-filesystem` paketini (`-y` bayrağıyla) `./docs` klasörü için çalıştırsın. Bir de `env` içinde `TOKEN` değişkenini **`${DOSYA_TOKEN}`** ortam değişkeninden okusun. Geçerli JSON olmalı.
+§BASLANGIC
+{
+  "mcpServers": {
+
+  }
+}
+§K Geçerli JSON ⟫ @json ⟫ tırnak, virgül ve parantezlere dikkat
+§K mcpServers → dosya-okuyucu ⟫ /"mcpServers"\s*:\s*\{\s*"dosya-okuyucu"\s*:/ ⟫ "mcpServers": { "dosya-okuyucu": { ... } }
+§K command: npx ⟫ /"command"\s*:\s*"npx"/ ⟫ "command": "npx"
+§K args: -y, paket, ./docs ⟫ /"args"\s*:\s*\[\s*"-y"\s*,\s*"@modelcontextprotocol\/server-filesystem"\s*,\s*"\.\/docs"\s*\]/ ⟫ "args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"]
+§K env: TOKEN = ${DOSYA_TOKEN} ⟫ /"env"\s*:\s*\{\s*"TOKEN"\s*:\s*"\$\{DOSYA_TOKEN\}"\s*\}/ ⟫ "env": { "TOKEN": "${DOSYA_TOKEN}" }
+§K Düz yazılmış sır yok ⟫ !/(sk-|ghp_)[A-Za-z0-9]{10,}/ ⟫ anahtarı dosyaya yazma
+§COZUM
+{
+  "mcpServers": {
+    "dosya-okuyucu": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"],
+      "env": { "TOKEN": "${DOSYA_TOKEN}" }
+    }
+  }
+}
+
+§SORU CLAUDE.md, skill, slash komutu, hook, MCP: hangisi ne zaman?
+CLAUDE.md: her zaman geçerli proje kuralları. Skill: belirli bir görev için adım adım talimat, Claude description'a bakıp kendisi seçer. Slash komutu: senin çağırdığın hazır prompt. Hook: bir olayda (araç çağrısından önce/sonra) otomatik çalışan komut. MCP: dış araç/veri bağlantısı.
+§SORU MCP nedir, hangi sorunu çözer?
+Claude'un dış sistemlere bağlanması için standart protokol. Her araç için ayrı entegrasyon yazmak yerine tek protokolü konuşan sunucular kullanılır (veritabanı, GitHub, dosya...).
+§SORU MCP güvenliği nasıl sağlanır?
+En az yetki (salt-okunur kullanıcı + `--readOnly`), üretim verisine bağlamama, sırları `${ORTAM_DEGISKENI}` ile verme ve araç çıktısını güvenilmez girdi sayma (prompt injection).
+§SORU İyi bir skill description'ı nasıl yazılır?
+NE yaptığını ve NE ZAMAN kullanılacağını söyler, somut tetikleyici ifadeler içerir ("yeni entity eklerken kullan"). Claude seçimi buna bakarak yaptığı için belirsiz yazılırsa skill hiç seçilmez.
+§SORU Claude Code'a büyük bir görevi nasıl verirsin?
+Önce planlat (plan modu), görevi küçük doğrulanabilir adımlara böl, her adımı testle doğrulat, kuralları CLAUDE.md'ye yaz. Gizli bilgileri sohbete yapıştırma.

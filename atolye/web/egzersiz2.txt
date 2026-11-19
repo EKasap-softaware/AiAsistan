@@ -1,0 +1,356 @@
+§LAB 05 | RabbitMQ | Kuyruk tanımla, mesaj yayınla, consumer yaz, yeniden deneme (retry) ve dead-letter kur.
+
+§ADIM Dead-letter'lı kuyruk tanımı (JSON) | json
+§ANLAT
+Mesaj akışı: **producer → exchange → (binding) → kuyruk → consumer**. İşlenemeyen mesaj çöpe gitmesin diye kuyruğa **dead-letter exchange** (DLX) tanımlanır: reddedilen/süresi dolan mesaj oraya aktarılır. Yönetim API'sinde kuyruk `PUT /api/queues/%2F/KUYRUK_ADI` ile, gövdede JSON tanımla oluşturulur (`%2F` varsayılan sanal sunucu `/` demektir).
+§ORNEK
+{
+  "durable": true,
+  "arguments": {
+    "x-dead-letter-exchange": "ornek.olu"
+  }
+}
+§GOREV
+`atolye.kuyruk` kuyruğunu oluşturan gövdeyi yaz: kalıcı (durable) olsun ve ölü mektuplar `atolye.olu` exchange'ine gitsin. Geçerli JSON olmalı.
+§BASLANGIC
+{
+
+}
+§K Geçerli JSON ⟫ @json ⟫ süslü parantez, tırnaklı anahtarlar, virgüllere dikkat
+§K "durable": true ⟫ /"durable"\s*:\s*true/ ⟫ kuyruk yeniden başlatmada kaybolmasın: "durable": true
+§K arguments bölümü ⟫ /"arguments"\s*:\s*\{/ ⟫ "arguments": { ... }
+§K x-dead-letter-exchange = atolye.olu ⟫ /"x-dead-letter-exchange"\s*:\s*"atolye\.olu"/ ⟫ "x-dead-letter-exchange": "atolye.olu"
+§COZUM
+{
+  "durable": true,
+  "arguments": {
+    "x-dead-letter-exchange": "atolye.olu"
+  }
+}
+
+§ADIM Mesaj yayınla (curl ile API) | sh
+§ANLAT
+`amq.default` **varsayılan exchange**'dir: her kuyruğa kendi adıyla bağlıdır, yani routing key = kuyruk adı olunca mesaj o kuyruğa gider. Yanlış routing key yazarsan mesaj **sessizce kaybolur** ("published, but not routed").
+§ORNEK
+curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"ornek.kuyruk","payload":"merhaba","payload_encoding":"string"}'
+§GOREV
+Yönetim API'sine (`localhost:15672`) `atolye.kuyruk` kuyruğuna `selam` içeriğiyle bir mesaj yayınlayan `curl` komutunu yaz (`amq.default` exchange'i, kullanıcı `kullanici:parola`).
+§BASLANGIC
+# komutu buraya yaz
+§K curl ve kimlik bilgisi (-u) ⟫ /curl\s+[^\n]*-u\s+\S+/ ⟫ curl -u kullanici:parola ...
+§K POST yöntemi ⟫ /-X\s+POST|--request\s+POST/ ⟫ -X POST
+§K amq.default/publish adresi ⟫ /localhost:15672\/api\/exchanges\/%2F\/amq\.default\/publish/ ⟫ http://localhost:15672/api/exchanges/%2F/amq.default/publish
+§K routing_key = atolye.kuyruk ⟫ /"routing_key"\s*:\s*"atolye\.kuyruk"/ ⟫ "routing_key":"atolye.kuyruk"
+§K payload selam ⟫ /"payload"\s*:\s*"selam"/ ⟫ "payload":"selam"
+§K payload_encoding string ⟫ /"payload_encoding"\s*:\s*"string"/ ⟫ "payload_encoding":"string"
+§COZUM
+curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"atolye.kuyruk","payload":"selam","payload_encoding":"string"}'
+
+§ADIM Consumer yaz (MassTransit) | cs
+§ANLAT
+Projede RabbitMQ'yu **MassTransit** kullanır. Mesaj bir `record`, işleyen sınıf ise `IConsumer<MesajTipi>`'dir. İş bittiğinde metot hatasız dönerse mesaj **ack**'lenir; hata fırlatırsa yeniden denenir. **Hata yutma**: yutarsan sistem mesajı başarılı sanır ve kaybolur.
+§ORNEK
+public record SiparisAlindi(Guid SiparisId, string Musteri);
+
+public class SiparisConsumer(ILogger<SiparisConsumer> log) : IConsumer<SiparisAlindi>
+{
+    public async Task Consume(ConsumeContext<SiparisAlindi> context)
+    {
+        log.LogInformation("Sipariş {Id} alındı", context.Message.SiparisId);
+        await Task.CompletedTask;
+    }
+}
+§GOREV
+`AiIstegi` mesajını işleyen `AiIstegiConsumer` sınıfını yaz. `Consume` metodunda mesajın `Soru` alanını logla (`context.Message.Soru`).
+§BASLANGIC
+public record AiIstegi(Guid IsId, string Soru);
+
+// consumer sınıfını buraya yaz
+§K IConsumer<AiIstegi> uygulanıyor ⟫ /class\s+AiIstegiConsumer[^\n{]*:\s*IConsumer<\s*AiIstegi\s*>/ ⟫ public class AiIstegiConsumer : IConsumer<AiIstegi>
+§K Consume metodu doğru imzada ⟫ /public\s+(async\s+)?Task\s+Consume\(\s*ConsumeContext<\s*AiIstegi\s*>\s+\w+\s*\)/ ⟫ public async Task Consume(ConsumeContext<AiIstegi> context)
+§K Mesaja context.Message ile erişiliyor ⟫ /\w+\.Message\.Soru/ ⟫ context.Message.Soru
+§COZUM
+public record AiIstegi(Guid IsId, string Soru);
+
+public class AiIstegiConsumer(ILogger<AiIstegiConsumer> log) : IConsumer<AiIstegi>
+{
+    public async Task Consume(ConsumeContext<AiIstegi> context)
+    {
+        log.LogInformation("Soru: {Soru}", context.Message.Soru);
+        await Task.CompletedTask;
+    }
+}
+
+§ADIM Yeniden deneme (retry) ayarı | cs
+§ANLAT
+Geçici hata (ağ kopması, LiteLLM yoğun) tekrar denenince düzelebilir. **Üstel bekleme** (exponential backoff) denemeler arasındaki süreyi büyütür, böylece sistemi bunaltmazsın. Tüm denemeler biterse mesaj `_error` kuyruğuna düşer. Mesaj **en az bir kez** (at-least-once) teslim edildiği için işlem **idempotent** olmalı: iki kez gelse de zarar vermesin.
+§ORNEK
+e.UseMessageRetry(r => r.Exponential(3, TimeSpan.FromSeconds(2), TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(10)));
+§GOREV
+`ai-istegi` endpoint'ine **5 deneme**, en az **1 saniye**, en çok **1 dakika** bekleme ve **5 saniye** artışla üstel yeniden deneme ekle. Sonra consumer'ı bağla (hazır satır).
+§BASLANGIC
+cfg.ReceiveEndpoint("ai-istegi", e =>
+{
+    // retry ayarını buraya yaz
+    e.ConfigureConsumer<AiIstegiConsumer>(ctx);
+});
+§K UseMessageRetry kullanıldı ⟫ /e\.UseMessageRetry\(/ ⟫ e.UseMessageRetry(r => r....)
+§K Exponential(5, ...) ⟫ /Exponential\(\s*5\s*,/ ⟫ r.Exponential(5, ...)
+§K En az 1 saniye ⟫ /TimeSpan\.FromSeconds\(\s*1\s*\)/ ⟫ TimeSpan.FromSeconds(1)
+§K En çok 1 dakika ⟫ /TimeSpan\.FromMinutes\(\s*1\s*\)/ ⟫ TimeSpan.FromMinutes(1)
+§K 5 saniye artış ⟫ /TimeSpan\.FromSeconds\(\s*5\s*\)/ ⟫ TimeSpan.FromSeconds(5)
+§COZUM
+cfg.ReceiveEndpoint("ai-istegi", e =>
+{
+    e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(5)));
+    e.ConfigureConsumer<AiIstegiConsumer>(ctx);
+});
+
+§ADIM Exchange tipi seç | txt
+§ANLAT
+Dört tip vardır: **direct** (routing key birebir eşleşen kuyruğa), **fanout** (bağlı TÜM kuyruklara kopyalar), **topic** (desenle: `siparis.*`), **headers** (başlık değerine göre).
+§ORNEK
+Tek bir "kullanıcı kaydoldu" olayını hem e-posta kuyruğuna hem istatistik kuyruğuna göndermek istersen: **fanout**.
+§GOREV
+Gelen her mesajı bağlı **bütün** kuyruklara kopyalayan exchange tipinin adını yaz (tek kelime).
+§BASLANGIC
+tip:
+§K fanout ⟫ /fanout/i ⟫ bütün kuyruklara kopyalayan tip: fan...
+§K Tek bir tip yazıldı (diğer tipler anılmadı) ⟫ !/direct|topic|headers/i ⟫ sadece cevabı yaz, diğer tip adlarını yazma
+§COZUM
+tip: fanout
+
+§SORU Exchange tipleri nelerdir ve farkları?
+direct: routing key birebir. fanout: bağlı tüm kuyruklara kopya. topic: `*` (bir kelime) ve `#` (çok kelime) ile desen. headers: mesaj başlıklarına göre.
+§SORU At-most-once, at-least-once, exactly-once farkı? Neden idempotency?
+At-most-once kayıp olabilir, at-least-once **tekrar olabilir**, exactly-once pratikte zor. RabbitMQ at-least-once teslim eder; aynı mesaj iki kez gelebilir, bu yüzden işlem tekrar edildiğinde zarar vermeyecek şekilde (idempotent) yazılmalı. Projede iş fişi `Bekliyor → İşleniyor` atomik geçişiyle bunu sağlar.
+§SORU Dead-letter queue nedir? Poison message nedir?
+İşlenemeyen mesajların aktarıldığı kuyruk. Poison message, sürekli hata verip kuyruğu tıkayan mesajdır; retry sonrası DLQ/`_error` kuyruğuna alınarak diğer mesajlar akmaya devam eder.
+§SORU Send ile Publish farkı (MassTransit)?
+`Send` belirli bir kuyruğa gider, tüketici yoksa bile mesaj kuyrukta bekler. `Publish` mesaj tipine abone exchange'e gider; abone yoksa mesaj **kaybolur**. Bu yüzden projede `queue:ai-istegi`'ne Send kullanıldı.
+§SORU RabbitMQ ile Kafka farkı (kısaca)?
+RabbitMQ akıllı broker: yönlendirme, ack, kuyruk modeli; mesaj tüketilince silinir. Kafka log tabanlı: mesajlar saklanır, tüketiciler offset ile tekrar okuyabilir; çok yüksek hacim ve olay akışı için.
+
+§LAB 06 | LiteLLM | Tek kapıdan LLM çağır: model takma adı, maliyet ve zaman sınırı, gerçek istek.
+
+§ADIM Model takma adı ekle (YAML) | yaml
+§ANLAT
+Uygulamalar `akilli`, `hizli` gibi **takma ad** çağırır; arkadaki gerçek model config'te değişir. Böylece sağlayıcı/model değişince kod değişmez. API anahtarı **dosyaya yazılmaz**, `os.environ/DEGISKEN_ADI` ile ortam değişkeninden okunur. `max_tokens` cevabı sınırlar: hem maliyet hem kötüye kullanım sınırı.
+§ORNEK
+model_list:
+  - model_name: ucuz
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 100
+§GOREV
+`atolye` takma adını ekle: `anthropic/claude-haiku-5-5` modeline bağlı, anahtar `ANTHROPIC_API_KEY` ortam değişkeninden okunsun ve cevap en fazla **50 token** olsun.
+§BASLANGIC
+model_list:
+  # atolye takma adını buraya ekle
+§K model_list bölümü ⟫ /^model_list:/m ⟫ model_list: ile başlayan liste
+§K model_name: atolye ⟫ /-\s*model_name:\s*atolye\b/ ⟫ - model_name: atolye
+§K Haiku modeline bağlı ⟫ /model:\s*anthropic\/claude-haiku-5-5/ ⟫ model: anthropic/claude-haiku-5-5
+§K Anahtar ortam değişkeninden ⟫ /api_key:\s*os\.environ\/ANTHROPIC_API_KEY/ ⟫ api_key: os.environ/ANTHROPIC_API_KEY (anahtarı düz yazma!)
+§K max_tokens: 50 ⟫ /max_tokens:\s*50\b/ ⟫ litellm_params içine max_tokens: 50
+§COZUM
+model_list:
+  - model_name: atolye
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 50
+
+§ADIM Genel ayarlar: zaman sınırı | yaml
+§ANLAT
+Kural: **dış sisteme giden her çağrının zaman sınırı olsun**; takılan sağlayıcı bütün sistemi kilitlemesin. `drop_params: true`, OpenAI formatında gelen ama Claude'un desteklemediği parametreleri (ör. `seed`) hata vermeden düşürür. Config sadece **açılışta** okunur: değişince `docker compose restart litellm`.
+§ORNEK
+litellm_settings:
+  drop_params: true
+  request_timeout: 60
+§GOREV
+`litellm_settings` altına `drop_params: true` ve **30 saniyelik** `request_timeout` ekle.
+§BASLANGIC
+litellm_settings:
+
+§K litellm_settings bölümü ⟫ /^litellm_settings:/m ⟫ litellm_settings:
+§K drop_params: true ⟫ /drop_params:\s*true/ ⟫ drop_params: true
+§K request_timeout: 30 ⟫ /request_timeout:\s*30\b/ ⟫ request_timeout: 30
+§COZUM
+litellm_settings:
+  drop_params: true
+  request_timeout: 30
+
+§ADIM LiteLLM'e istek at (curl) | sh
+§ANLAT
+LiteLLM **OpenAI uyumlu** bir API sunar: `/v1/chat/completions`. Uygulama LiteLLM'e **master key** ile gider; gerçek sağlayıcı anahtarını (Anthropic) görmez. Cevapta `usage` alanı token sayısını verir: maliyet buradan hesaplanır.
+§ORNEK
+curl http://localhost:4000/v1/chat/completions -H "Authorization: Bearer $MASTER_KEY" -H "Content-Type: application/json" -d '{"model":"hizli","messages":[{"role":"user","content":"merhaba de"}]}'
+§GOREV
+`localhost:4000`'deki LiteLLM'e, `atolye` modeliyle "tamam yaz" diyen bir istek at. Yetki başlığı `Bearer $LITELLM_MASTER_KEY` olsun (anahtarı düz yazma).
+§BASLANGIC
+# curl komutunu buraya yaz
+§K Doğru adres ⟫ /curl\s+[^\n]*localhost:4000\/v1\/chat\/completions/ ⟫ http://localhost:4000/v1/chat/completions
+§K Authorization: Bearer başlığı ⟫ /-H\s+["']Authorization:\s*Bearer\s+/i ⟫ -H "Authorization: Bearer $LITELLM_MASTER_KEY"
+§K Anahtar ortam değişkeninden ⟫ /\$\{?LITELLM_MASTER_KEY\}?/ ⟫ gerçek anahtarı yazma, $LITELLM_MASTER_KEY kullan
+§K Content-Type: application/json ⟫ /Content-Type:\s*application\/json/i ⟫ -H "Content-Type: application/json"
+§K "model": "atolye" ⟫ /"model"\s*:\s*"atolye"/ ⟫ "model":"atolye"
+§K messages dizisi ⟫ /"messages"\s*:\s*\[\s*\{\s*"role"\s*:\s*"user"/ ⟫ "messages":[{"role":"user","content":"..."}]
+§COZUM
+curl http://localhost:4000/v1/chat/completions -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" -d '{"model":"atolye","messages":[{"role":"user","content":"tamam yaz"}]}'
+
+§ADIM İki anahtar: hangisi nerede? | txt
+§ANLAT
+Sistemde iki anahtar vardır: **master key** (LiteLLM'e erişim izni) ve **Anthropic API anahtarı** (gerçek sağlayıcı). Güvenlik ilkesi: sağlayıcı anahtarı **tek yerde** (LiteLLM) durur.
+§ORNEK
+Bir sızıntıda, uygulamaya verilen anahtar LiteLLM master key olursa hasar sınırlıdır; sağlayıcı anahtarı hiç dışarı çıkmamıştır.
+§GOREV
+Uygulamaya (ve LangFlow'a) hangi anahtar verilir, Anthropic anahtarı nerede durur? Tek cümleyle yaz; cevapta `master` ve `LiteLLM` geçsin.
+§BASLANGIC
+cevap:
+§K Master key'den söz edildi ⟫ /master/i ⟫ uygulamaya LiteLLM master key verilir
+§K LiteLLM'den söz edildi ⟫ /litellm/i ⟫ Anthropic anahtarı yalnızca LiteLLM'de durur
+§K Anthropic anahtarı da anıldı ⟫ /anthropic/i ⟫ gerçek sağlayıcı anahtarı (Anthropic) nerede duruyor?
+§COZUM
+Uygulamaya LiteLLM master key verilir; Anthropic anahtarı yalnızca LiteLLM'in ortam değişkeninde durur.
+
+§SORU LLM gateway/proxy neden kullanılır?
+Tek API (OpenAI uyumlu) arkasında birçok sağlayıcı; sağlayıcı anahtarını gizleme; takma ad ile model değiştirme; maliyet ve kullanım takibi; fallback, retry ve rate limit.
+§SORU Token nedir, maliyet nasıl hesaplanır? Neden özetlemede küçük model?
+Token, modelin işlediği metin parçasıdır. Maliyet = giriş token'ı × giriş fiyatı + çıkış token'ı × çıkış fiyatı. Ölçtük: `hizli` (Haiku) küçük bir istekte `akilli`'dan yaklaşık **20 kat ucuz**; özetleme gibi basit işlerde ucuz model yeterlidir.
+§SORU Alias (model_name) ile gerçek model ayrımının faydası?
+Kod `akilli` der; model değişince (yeni sürüm, başka sağlayıcı) sadece config değişir, kod ve dağıtım değişmez.
+§SORU Master key ile sağlayıcı anahtarı farkı?
+Master key LiteLLM'e erişimi sağlar ve uygulamalara verilir. Sağlayıcı anahtarı (Anthropic) yalnızca LiteLLM'de durur; sızarsa en geniş zararı verir, o yüzden tek yerde tutulur.
+§SORU Fallback ve retry nasıl kurulur?
+LiteLLM `router_settings`/`fallbacks` ile bir model hata verirse yedeğine geçer; `num_retries` ile aynı istek tekrar denenir. Her çağrıya `request_timeout` konur.
+
+§LAB 07 | AI Memory | LLM hafızasızdır: son N mesaj + özet + süzülmüş uzun hafıza mantığını sen yaz.
+
+§ADIM Kayan pencere: SonN | cs
+§ANLAT
+LLM **hafızasızdır**: her istekte geçmişi SEN gönderirsin. Geçmiş büyüdükçe token ve maliyet artar (ölçtük: 0/4/12 mesaj → 56/216/536 token). **Sliding window**: sadece son N mesajı gönder. Sınır durumları (n > sayı, n ≤ 0) bug'ın en çok çıktığı yerdir.
+§ORNEK
+public static IReadOnlyList<string> IlkN(IReadOnlyList<string> liste, int n)
+{
+    if (n <= 0) return Array.Empty<string>();
+    return liste.Take(n).ToList();
+}
+§GOREV
+`SonN` metodunu yaz: listenin **son** `n` elemanını sırayı bozmadan döndür; `n` sayıdan büyükse hepsini, `n <= 0` ise boş liste döndür.
+§BASLANGIC
+public static class KonusmaPenceresi
+{
+    public static IReadOnlyList<string> SonN(IReadOnlyList<string> mesajlar, int n)
+    {
+        // yaz
+    }
+}
+§K İmza doğru ⟫ /static\s+IReadOnlyList<string>\s+SonN\(\s*IReadOnlyList<string>\s+\w+\s*,\s*int\s+n\s*\)/ ⟫ public static IReadOnlyList<string> SonN(IReadOnlyList<string> mesajlar, int n)
+§K n <= 0 koruması ⟫ /n\s*<=\s*0/ ⟫ if (n <= 0) return Array.Empty<string>();
+§K Son n eleman alınıyor ⟫ /TakeLast\(\s*n\s*\)|Skip\(/ ⟫ mesajlar.TakeLast(n) veya Skip(sayı - n)
+§K Liste döndürülüyor ⟫ /\.ToList\(\)|\.ToArray\(\)|return\s+new\s+List/ ⟫ sonucu .ToList() ile listeye çevir
+§COZUM
+public static class KonusmaPenceresi
+{
+    public static IReadOnlyList<string> SonN(IReadOnlyList<string> mesajlar, int n)
+    {
+        if (n <= 0) return Array.Empty<string>();
+        return mesajlar.TakeLast(n).ToList();
+    }
+}
+
+§ADIM Özet eşiği | cs
+§ANLAT
+Pencere dışında kalan eski mesajlar **özetlenir**; özet + son N mesaj modele gider. Özetleme pahalı olduğu için her mesajda değil, sayı **eşiğe ulaşınca** yapılır. Basit mantık, ama doğru yazmak (`>=` mı `>` mı?) testle sabitlenir.
+§ORNEK
+public static bool Doldu(int sayi, int kapasite) => sayi >= kapasite;
+§GOREV
+`OzetGerekliMi(mesajSayisi, esik)` metodunu yaz: mesaj sayısı eşiğe **ulaştığında veya geçtiğinde** `true` dönsün (20, 20 → true; 19, 20 → false).
+§BASLANGIC
+public static bool OzetGerekliMi(int mesajSayisi, int esik)
+{
+    // yaz
+}
+§K İmza doğru ⟫ /static\s+bool\s+OzetGerekliMi\(\s*int\s+mesajSayisi\s*,\s*int\s+esik\s*\)/ ⟫ public static bool OzetGerekliMi(int mesajSayisi, int esik)
+§K >= karşılaştırması ⟫ /mesajSayisi\s*>=\s*esik/ ⟫ mesajSayisi >= esik (eşitlikte de true)
+§K bool döndürülüyor ⟫ /(=>|return)\s*[^;]*>=[^;]*;/ ⟫ ifadeyi return et ya da => ile yaz
+§COZUM
+public static bool OzetGerekliMi(int mesajSayisi, int esik) => mesajSayisi >= esik;
+
+§ADIM Uzun süreli hafıza filtresi | cs
+§ANLAT
+Uzun süreli hafıza, konuşmadan çıkarılan kalıcı gerçeklerdir ("kullanıcı kahve sever"). Bunları **modelin kendisi üretir** ve model güvenilmez bir kaynaktır: "YOK" yazar, roman yazar, aynısını tekrarlar. Veritabanına girmeden **süzülmelidir**. (Projede `HafizaServisi` aynı kuralları uygular.)
+§ORNEK
+var gorulen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+if (gorulen.Add(s)) sonuc.Add(s);   // aynı metin ikinci kez eklenmez
+§GOREV
+`HafizaFiltrele(adaylar)`: her adayı `Trim()` et; şunları ele: **boş**, **"YOK"** (büyük/küçük harf fark etmez), **200 karakterden uzun**, **birden çok satırlı**; **tekrarları** (büyük/küçük harf farkıyla bile) ele, ilk görüneni koru.
+§BASLANGIC
+public static IReadOnlyList<string> HafizaFiltrele(IEnumerable<string> adaylar)
+{
+    // yaz
+}
+§K Tekrar için HashSet ⟫ /HashSet<string>/ ⟫ new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+§K Büyük/küçük harf duyarsız ⟫ /StringComparer\.OrdinalIgnoreCase/ ⟫ StringComparer.OrdinalIgnoreCase kullan
+§K Trim() ⟫ /Trim\(\)/ ⟫ aday.Trim()
+§K "YOK" ele ⟫ /["']YOK["']/ ⟫ "YOK" ile karşılaştır (Equals(..., OrdinalIgnoreCase))
+§K 200 karakter sınırı ⟫ /200/ ⟫ s.Length > 200
+§K Çok satırlıyı ele (\n) ⟫ /\\n/ ⟫ s.Contains('\n') (ve istersen '\r')
+§K Sonuca ekleme (Add) ⟫ /\.Add\(/ ⟫ sonuc.Add(s) ile geçerleri topla
+§COZUM
+public static IReadOnlyList<string> HafizaFiltrele(IEnumerable<string> adaylar)
+{
+    var gorulen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var sonuc = new List<string>();
+    foreach (var aday in adaylar)
+    {
+        var s = (aday ?? "").Trim();
+        if (s.Length == 0 || s.Length > 200) continue;
+        if (s.Equals("YOK", StringComparison.OrdinalIgnoreCase)) continue;
+        if (s.Contains('\n') || s.Contains('\r')) continue;
+        if (gorulen.Add(s)) sonuc.Add(s);
+    }
+    return sonuc;
+}
+
+§ADIM Testle sabitle | cs
+§ANLAT
+Saf mantık (dış sistem yok) en kolay test edilen koddur: Moq bile gerekmez. **Sınır değerleri** test et: tam eşik, bir altı, sıfır, negatif, çok uzun metin. FluentAssertions ile `Should().Equal(...)` sırayı da denetler.
+§ORNEK
+[Fact]
+public void IlkN_NSayidanBuyuk_HepsiniDondurur()
+    => Liste.IlkN(new[] { "a", "b" }, 9).Should().Equal("a", "b");
+§GOREV
+`SonN` için iki test yaz: (1) `["a","b","c","d"]` ve `n = 2` → `"c","d"`; (2) `n = 0` → boş liste.
+§BASLANGIC
+public class KonusmaPenceresiTests
+{
+    // testleri buraya yaz
+}
+§K En az iki test ⟫ /\[(Fact|Theory)\][\s\S]*\[(Fact|Theory)\]/ ⟫ iki ayrı [Fact] metodu
+§K SonN çağrılıyor ⟫ /KonusmaPenceresi\.SonN\(/ ⟫ KonusmaPenceresi.SonN(new[] {...}, 2)
+§K Beklenen: "c","d" sırayla ⟫ /Should\(\)\.Equal\(\s*"c"\s*,\s*"d"\s*\)/ ⟫ .Should().Equal("c", "d")
+§K n = 0 için boş bekleniyor ⟫ /,\s*0\s*\)[\s\S]*BeEmpty\(\)|BeEmpty\(\)/ ⟫ SonN(..., 0).Should().BeEmpty()
+§COZUM
+public class KonusmaPenceresiTests
+{
+    [Fact]
+    public void SonN_SonIkiyiSiraylaDondurur()
+        => KonusmaPenceresi.SonN(new[] { "a", "b", "c", "d" }, 2).Should().Equal("c", "d");
+
+    [Fact]
+    public void SonN_Sifir_BosDondurur()
+        => KonusmaPenceresi.SonN(new[] { "a", "b" }, 0).Should().BeEmpty();
+}
+
+§SORU LLM neden "hafızasız"? Context window nedir, dolarsa ne olur?
+Model her istekte sadece o istekteki metni görür; önceki konuşmayı sen göndermezsen bilmez. Context window, tek istekte işleyebildiği toplam token sınırıdır; dolarsa istek reddedilir ya da eski kısım atılmak zorunda kalır, bu yüzden pencere + özet kullanılır.
+§SORU Sliding window ile özetleme (summarization) farkı, neden ikisi birlikte?
+Pencere son mesajları **aynen** tutar (ayrıntı korunur, ucuz). Özet eski kısmı **sıkıştırır** (bilgi kaybı olur ama bağlam yaşar). İkisi birlikte: özet + son N mesaj hem ucuz hem bağlamlıdır.
+§SORU Kısa ve uzun süreli hafıza nerede saklanır, nasıl geri çağrılır?
+Kısa süreli: konuşma geçmişi (projede MongoDB `mesajlar`). Uzun süreli: kalıcı gerçekler (MongoDB `hafiza`; ölçek büyürse vektör veritabanı + benzerlik araması ile ilgili olanlar getirilir) ve her istekte prompt'a eklenir.
+§SORU Modelin ürettiği hafızaya neden güvenmemeliyiz?
+Model çıktısı güvenilmez girdidir: çöp ("YOK"), uzun metin, tekrar ya da **prompt injection** ile enjekte edilmiş talimat içerebilir. Süzülmeden saklanırsa kalıcı hâle gelir.
+§SORU Hafıza silme/görüntüleme neden bir özellik olmalı?
+Kişisel veri saklıyorsun: kullanıcı neyin tutulduğunu görmeli ve silebilmeli (KVKK/GDPR "unutulma hakkı"). Projede `GET/DELETE /api/hafiza` bu yüzden var.

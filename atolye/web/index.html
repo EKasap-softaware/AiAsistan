@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atölye</title>
+<style>
+:root{--bg:#f6f7fb;--panel:#fff;--ink:#1d2433;--soft:#5b6780;--line:#dde2ee;--acc:#3b6fd8;--ok:#1f8f4e;--bad:#c93a3a;--warn:#b7791f;--code:#0f172a;--codeink:#e6edf7;--chip:#eef2fb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1420;--panel:#171e2e;--ink:#e6ebf5;--soft:#9aa7c0;--line:#27324a;--acc:#7aa2ff;--ok:#4cc58a;--bad:#ff7b7b;--warn:#e8b24a;--code:#0a0f1a;--chip:#1e2740}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 "Segoe UI",system-ui,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:16px}
+header h1{font-size:18px;margin:0}
+.bar{flex:1;max-width:340px;height:10px;background:var(--chip);border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .5s}
+#sayi{color:var(--soft);font-size:14px}
+.sifirla{margin-left:auto;background:none;border:1px solid var(--line);color:var(--soft);border-radius:8px;padding:5px 10px;font-size:13px;cursor:pointer}
+.duzen{display:grid;grid-template-columns:280px 1fr;max-width:1280px;margin:0 auto}
+nav{padding:16px 12px;position:sticky;top:53px;align-self:start;max-height:calc(100vh - 53px);overflow:auto}
+nav button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid transparent;background:none;color:var(--ink);padding:9px 10px;border-radius:9px;font:inherit;font-size:14.5px;cursor:pointer}
+nav button:hover{background:var(--chip)}
+nav button.aktif{background:var(--chip);border-color:var(--acc)}
+nav button.kilit{color:var(--soft)}
+nav .no{min-width:26px;height:26px;border-radius:13px;display:grid;place-items:center;font-size:11px;background:var(--chip);flex:none;padding:0 6px}
+nav .tam .no{background:var(--ok);color:#fff}
+nav .guncel .no{background:var(--acc);color:#fff}
+main{padding:22px 28px 80px;min-width:0}
+main h1{font-size:26px;margin:.2em 0}
+.ozet{color:var(--soft);margin:.2em 0 12px}
+.gorsel{margin:14px 0 18px;border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.gorsel img{display:block;width:100%}
+details.adim{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin:12px 0}
+details.adim>summary{cursor:pointer;list-style:none;padding:14px 18px;font-weight:600;display:flex;gap:12px;align-items:center}
+details.adim>summary::-webkit-details-marker{display:none}
+.rozet{min-width:28px;height:28px;border-radius:14px;background:var(--chip);display:grid;place-items:center;font-size:13px;flex:none}
+details.ok .rozet{background:var(--ok);color:#fff}
+details.gor .rozet{background:var(--warn);color:#fff}
+.icerik{padding:0 20px 20px;border-top:1px solid var(--line)}
+.md code{background:var(--chip);padding:1px 6px;border-radius:5px;font:13.5px Consolas,monospace}
+.md p{margin:.6em 0}
+h4{margin:1.1em 0 .3em;font-size:14px;color:var(--soft);text-transform:uppercase;letter-spacing:.04em}
+pre{position:relative;background:var(--code);color:var(--codeink);padding:14px 16px;border-radius:10px;overflow:auto;margin:6px 0}
+pre code{background:none;padding:0;color:inherit;font:13px/1.55 Consolas,monospace}
+.kop{position:absolute;right:8px;top:8px;border:0;background:#ffffff22;color:#cfd8ea;border-radius:6px;padding:3px 9px;font-size:12px;cursor:pointer}
+.gorev{margin:14px 0 8px;padding:12px 16px;border-left:4px solid var(--acc);background:var(--chip);border-radius:0 10px 10px 0}
+textarea{width:100%;min-height:150px;resize:vertical;background:var(--code);color:var(--codeink);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:13.5px/1.55 Consolas,monospace;tab-size:2}
+textarea:focus{outline:2px solid var(--acc)}
+.btnler{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.btn{border:0;background:var(--acc);color:#fff;padding:10px 20px;border-radius:10px;font:600 15px inherit;cursor:pointer}
+.btn.ikinci{background:var(--chip);color:var(--ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.sonuc{margin-top:8px}
+.sonuc .satir{padding:6px 2px;font-size:15px}
+.sonuc .satir.ok::before{content:"✔ ";color:var(--ok);font-weight:700}
+.sonuc .satir.hata::before{content:"✘ ";color:var(--bad);font-weight:700}
+.ipucu{display:block;margin-left:22px;color:var(--warn);font-size:14px}
+.basarili{background:linear-gradient(135deg,#1f8f4e,#3b6fd8);color:#fff;padding:14px 18px;border-radius:12px;margin:8px 0;font-weight:600}
+.cozumkutu{margin-top:8px;padding:10px 14px;border:1px dashed var(--warn);border-radius:10px}
+.bitti{background:linear-gradient(135deg,#1f8f4e,#3b6fd8);color:#fff;padding:20px 22px;border-radius:14px;margin:24px 0 8px}
+.bitti b{font-size:22px}
+.bitti .btn{background:#ffffff33;margin-top:10px}
+.soru{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:8px 0;padding:0 16px}
+.soru summary{cursor:pointer;padding:12px 0;font-weight:600}
+.soru .cevap{padding:0 0 12px;color:var(--ink)}
+.kilitkutu{text-align:center;padding:70px 20px;color:var(--soft)}
+.kilitkutu b{font-size:44px;display:block}
+@media (max-width:860px){.duzen{grid-template-columns:1fr}nav{position:static;max-height:none;display:flex;gap:6px;overflow:auto;padding:10px}nav button{width:auto;white-space:nowrap}main{padding:14px 14px 60px}}
+</style>
+</head>
+<body>
+<header><h1>🧪 Atölye</h1><div class="bar"><i id="cubuk"></i></div><span id="sayi"></span><button class="sifirla" id="sifirla">İlerlemeyi sıfırla</button></header>
+<div class="duzen"><nav id="nav"></nav><main id="main"></main></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<script src="egz.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const LS = 'atolye-egz-v1';
+let labs = [], st = { adim: {}, taslak: {}, deneme: {} }, aktif = null;
+try { Object.assign(st, JSON.parse(localStorage.getItem(LS) || '{}')); } catch (e) {}
+const kaydet = () => { try { localStorage.setItem(LS, JSON.stringify(st)); } catch (e) {} };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const md = s => (window.marked && window.DOMPurify) ? DOMPurify.sanitize(marked.parse(s, { gfm: true })) : esc(s).replace(/\n/g, '<br>');
+
+const anahtar = (l, i) => l.id + '-' + i;
+const adimBitti = (l, i) => !!st.adim[anahtar(l, i)];
+const labBitti = l => l.adimlar.every((_, i) => adimBitti(l, i));
+const labKilitli = n => n > 0 && !labBitti(labs[n - 1]);          // önceki seviye bitmeden açılmaz
+const guncelIdx = () => { const n = labs.findIndex(l => !labBitti(l)); return n < 0 ? labs.length - 1 : n; };
+
+function navCiz() {
+  const gu = guncelIdx(); let tam = 0;
+  $('#nav').innerHTML = labs.map((l, n) => {
+    const bitti = labBitti(l), kilit = labKilitli(n); if (bitti) tam++;
+    const yapilan = l.adimlar.filter((_, i) => adimBitti(l, i)).length;
+    const sn = bitti ? 'tam' : (kilit ? 'kilit' : (n === gu ? 'guncel' : ''));
+    const ikon = bitti ? '✔' : (kilit ? '🔒' : `${yapilan}/${l.adimlar.length}`);
+    return `<button class="${sn} ${aktif === l.id ? 'aktif' : ''}" data-id="${l.id}"><span class="no">${ikon}</span><span>${l.id}. ${esc(l.ad)}</span></button>`;
+  }).join('');
+  $('#nav').querySelectorAll('button').forEach(b => b.onclick = () => sec(b.dataset.id));
+  $('#cubuk').style.width = (tam * 10) + '%'; $('#sayi').textContent = `${tam}/10 seviye`;
+}
+
+function adimHtml(l, a, i) {
+  const k = anahtar(l, i), d = st.adim[k] || '';
+  const taslak = st.taslak[k] !== undefined ? st.taslak[k] : a.baslangic;
+  const acik = !d && l.adimlar.findIndex((_, j) => !adimBitti(l, j)) === i;
+  const rozet = d === 'ok' ? '✔' : d === 'gor' ? '👀' : (i + 1);
+  return `<details class="adim ${d}" data-i="${i}" ${acik ? 'open' : ''}>
+    <summary><span class="rozet">${rozet}</span>${esc(a.b)}</summary>
+    <div class="icerik">
+      <div class="md">${md(a.anlat)}</div>
+      <h4>Örnek</h4><pre><code>${esc(a.ornek)}</code></pre>
+      <div class="gorev md"><b>Görev:</b> ${md(a.gorev)}</div>
+      <textarea spellcheck="false" rows="${Math.max(7, Math.min(22, (taslak.split('\n').length) + 3))}">${esc(taslak)}</textarea>
+      <div class="btnler">
+        <button class="btn" data-act="kontrol">✔ Kontrol et <small>(Ctrl+Enter)</small></button>
+        <button class="btn ikinci" data-act="cozum" ${(st.deneme[k] || 0) >= 2 ? '' : 'disabled'}>👀 Çözümü göster</button>
+        <button class="btn ikinci" data-act="basa">↺ Başa al</button>
+      </div>
+      <div class="sonuc"></div>
+    </div></details>`;
+}
+
+function sec(id) {
+  const n = labs.findIndex(l => l.id === id); if (n < 0) return;
+  aktif = id; location.hash = 'lab-' + id; navCiz();
+  const l = labs[n], m = $('#main');
+  if (labKilitli(n)) {
+    m.innerHTML = `<div class="kilitkutu"><b>🔒</b><h2>${l.id}. ${esc(l.ad)}</h2><p>Bu seviye kilitli. Önce <b>${esc(labs[n - 1].ad)}</b> seviyesinin tüm adımlarını tamamla.</p></div>`;
+    return;
+  }
+  m.innerHTML = `<h1>Seviye ${n + 1} · ${esc(l.ad)}</h1><p class="ozet">${esc(l.ozet)}</p>
+    <div class="gorsel"><img src="img/lab${l.id}.svg" alt="${esc(l.ad)} şeması"></div>
+    ${l.adimlar.map((a, i) => adimHtml(l, a, i)).join('')}<div id="bitis"></div>`;
+  m.querySelectorAll('pre').forEach(p => {
+    if (p.closest('.sonuc')) return;
+    const b = document.createElement('button'); b.className = 'kop'; b.textContent = 'Kopyala';
+    b.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(p.querySelector('code').innerText); b.textContent = '✔'; setTimeout(() => b.textContent = 'Kopyala', 1200); };
+    p.appendChild(b);
+  });
+  bitisCiz(l, n); scrollTo(0, 0);
+}
+
+function bitisCiz(l, n) {
+  const el = $('#bitis'); if (!el) return;
+  const sorular = `<h4>Mülakat soruları (cevabı görmek için tıkla)</h4>` +
+    l.sorular.map(q => `<details class="soru"><summary>${esc(q.s)}</summary><div class="cevap md">${md(q.c)}</div></details>`).join('');
+  const sonraki = labs[n + 1];
+  const banner = labBitti(l) ? `<div class="bitti"><b>🎉 Seviye ${n + 1} tamam!</b><br>${sonraki ? `Seviye ${n + 2} açıldı: ${esc(sonraki.ad)}` : 'Tüm seviyeler tamam. İşe hazırsın! 🏆'}
+    ${sonraki ? `<br><button class="btn" data-act="sonraki" data-id="${sonraki.id}">Sonraki seviye →</button>` : ''}</div>` : '';
+  el.innerHTML = banner + sorular;
+}
+
+function kontrol(l, i, det) {
+  const a = l.adimlar[i], k = anahtar(l, i), ta = det.querySelector('textarea');
+  const r = egzKontrol(a, ta.value);
+  st.deneme[k] = (st.deneme[k] || 0) + 1; st.taslak[k] = ta.value;
+  const sonuc = det.querySelector('.sonuc');
+  let html = r.sonuc.map(x => `<div class="satir ${x.ok ? 'ok' : 'hata'}">${esc(x.ad)}${x.ok ? '' : `<span class="ipucu">💡 ${esc(x.ipucu)}</span>`}</div>`).join('');
+  if (r.gecti) {
+    st.adim[k] = 'ok'; det.className = 'adim ok'; det.querySelector('.rozet').textContent = '✔';
+    html = `<div class="basarili">Tamam! Bu adımı geçtin ✔</div>` + html;
+    const sonrakiAdim = l.adimlar.findIndex((_, j) => !adimBitti(l, j));
+    if (sonrakiAdim >= 0) { const d2 = $('#main').querySelectorAll('details.adim')[sonrakiAdim]; if (d2) d2.open = true; }
+  } else if (st.deneme[k] >= 2) {
+    det.querySelector('[data-act=cozum]').disabled = false;
+  }
+  sonuc.innerHTML = html; kaydet(); navCiz(); bitisCiz(l, labs.indexOf(l));
+}
+
+$('#main').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'sonraki') { sec(b.dataset.id); return; }
+  const det = b.closest('details.adim'); const l = labs.find(x => x.id === aktif); const i = Number(det.dataset.i);
+  const a = l.adimlar[i], k = anahtar(l, i);
+  if (b.dataset.act === 'kontrol') kontrol(l, i, det);
+  if (b.dataset.act === 'basa') { det.querySelector('textarea').value = a.baslangic; delete st.taslak[k]; kaydet(); det.querySelector('.sonuc').innerHTML = ''; }
+  if (b.dataset.act === 'cozum') {
+    if (st.adim[k] !== 'ok') { st.adim[k] = 'gor'; det.className = 'adim gor'; det.querySelector('.rozet').textContent = '👀'; }
+    det.querySelector('.sonuc').innerHTML = `<div class="cozumkutu"><b>Referans çözüm</b> (karşılaştır, sonra kendin yeniden yaz):<pre><code>${esc(a.cozum)}</code></pre></div>`;
+    kaydet(); navCiz(); bitisCiz(l, labs.indexOf(l));
+  }
+});
+$('#main').addEventListener('keydown', e => {
+  if (e.target.tagName !== 'TEXTAREA') return;
+  if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.value = t.value.slice(0, s) + '  ' + t.value.slice(t.selectionEnd); t.selectionStart = t.selectionEnd = s + 2; }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.target.closest('details').querySelector('[data-act=kontrol]').click(); }
+});
+$('#main').addEventListener('input', e => {
+  if (e.target.tagName !== 'TEXTAREA') return;
+  const l = labs.find(x => x.id === aktif), i = Number(e.target.closest('details').dataset.i);
+  st.taslak[anahtar(l, i)] = e.target.value; kaydet();
+});
+$('#sifirla').onclick = () => { if (confirm('Tüm ilerleme ve yazdıkların silinsin mi?')) { st = { adim: {}, taslak: {}, deneme: {} }; kaydet(); location.hash = ''; location.reload(); } };
+
+(async () => {
+  try {
+    const parcalar = await Promise.all(['egzersiz1.txt', 'egzersiz2.txt', 'egzersiz3.txt'].map(f => fetch(f).then(r => { if (!r.ok) throw new Error(f); return r.text(); })));
+    labs = egzParse(parcalar.join('\n'));
+  } catch (e) {
+    $('#main').innerHTML = `<div class="kilitkutu"><b>⚠</b><p>İçerik yüklenemedi. Sayfayı <code>http://localhost:5300</code> adresinden aç (dosyaya çift tıklama çalışmaz).</p></div>`; return;
+  }
+  const h = (location.hash.match(/lab-(\d\d)/) || [])[1];
+  const hedef = h && labs.some((l, n) => l.id === h && !labKilitli(n)) ? h : labs[guncelIdx()].id;
+  sec(hedef);
+})();
+</script>
+</body>
+</html>
