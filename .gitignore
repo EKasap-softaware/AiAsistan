@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # CI coverage ciktisi
 coverage/
+
+# Gelistirme icin yerel gizli ayarlar (yedek yol, user-secrets okunamazsa)
+appsettings.Local.json

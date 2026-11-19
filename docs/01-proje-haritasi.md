@@ -258,6 +258,9 @@ Gizli olmayan ayarlar: log seviyesi, `Hafiza` bölümü (pencere, eşik, maksimu
 ### `appsettings.Development.json`
 Sadece geliştirmede geçerli ayarlar (şimdilik sadece log seviyesi).
 
+### `appsettings.Local.json` (Git'te YOK, `.gitignore`'da)
+Geliştirme için **yedek** gizli ayar dosyası. Ortam `Development` ise ve dosya varsa `Program.cs` onu da okur (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:Key`). Asıl yol `user-secrets`'tır; bu dosya, kasa okunamadığı durumlar için (bkz. `05-sorun-giderme.md` #14). **Gizli değer içerir, paylaşma.**
+
 ### `Properties/launchSettings.json`
 Visual Studio / `dotnet run` profilleri: `http` → `http://localhost:5254`, `https` → `https://localhost:7080`.
 
@@ -294,8 +297,8 @@ Geçerli kayıt; e-posta küçük harfe çevirme; e-posta zaten var; geçersiz g
 ### `HafizaServisiTests.cs` (18 test sayılır)
 Küçük sayılarla (pencere 2, eşik 4) test edilir. **Bağlam:** hafıza/özet yoksa sistem prompt'u sadece temel metindir; varsa hafıza ve özet eklenir; özetlenmiş mesajlar atlanıp ham mesajlar sırayla gelir. **Özetleme:** eşik aşılmadıysa özetlemez; aşıldıysa doğru aralığı (`yeniSinir`) özetleyip kaydeder; önceki özet varsa yeni özet isteğine de girer. **Hafıza çıkarma:** yeni bilgiyi kaydeder; `YOK` / `yok.` / boş çıktıyı kaydetmez (5 girdi); zaten bilineni büyük/küçük harf farkıyla tekrarlamaz; 200 karakterden uzunu kaydetmez; çok satırlı çıktıyı tek satıra çevirir. **Dayanıklılık:** LLM hata verirse `SohbetSonrasiAsync` fırlatmaz; özetleme patlasa bile hafıza çıkarma denenir. **Yönetim:** silme depoya doğru iletilir.
 
-### `AyarDogrulamaTests.cs` (7 test sayılır)
-`AddInfrastructure`'ın zorunlu ayarları (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`) kontrolü: hiç ayar yoksa hepsini listeler; sadece biri eksikse sadece onu listeler; boş/boşluk değeri eksik sayar; hepsi varsa hata vermez; `AddInfrastructure` eksik ayarda servisleri kaydetmeden açık hata verir. Gerçek bağlantı kurulmaz (bağlantılar tembeldir).
+### `AyarDogrulamaTests.cs` (8 test sayılır)
+`AddInfrastructure`'ın zorunlu ayarları (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`) kontrolü: hiç ayar yoksa hepsini listeler; sadece biri eksikse sadece onu listeler; boş/boşluk değeri eksik sayar; hepsi varsa hata vermez; `AddInfrastructure` eksik ayarda servisleri kaydetmeden açık hata verir; hata mesajı sır içermeyen tanı bilgisini (APPDATA, kasa yolu, ayar kaynakları) ve yedek yolu içerir. Gerçek bağlantı kurulmaz (bağlantılar tembeldir).
 
 ### `Asistan.Tests.csproj`
 Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **7.\*** (okunaklı doğrulama; 8. sürüm ticari), `coverlet.collector` (kod kapsama), `Microsoft.NET.Test.Sdk`.

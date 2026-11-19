@@ -52,7 +52,7 @@ Kuyruk ve Worker **henüz yok**: Aşama 9-11'de gelecek. (MongoDB'ye sohbet kayd
 | 1 | Solution iskeleti | Bitti |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | Bitti |
 | 3 | EF Core + `/api/kullanicilar` | Bitti |
-| 4 | Unit testler | Bitti (şu an 44 test) |
+| 4 | Unit testler | Bitti (şu an 45 test) |
 | 5 | CI (GitHub Actions) | Dosya hazır, Actions sekmesinden doğrulanmalı |
 | 6 | LiteLLM + `/api/sohbet` | Bitti (Claude'dan gerçek cevap alındı) |
 | 7 | MongoDB sohbet geçmişi | Bitti (18 test, gerçek MongoDB'de doğrulandı) |

@@ -6,6 +6,11 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Geliştirme için YEDEK yerel ayar dosyası (Git'e girmez, bkz. .gitignore). Öncelikli yol 'user-secrets';
+// bazı ortamlarda (ör. Visual Studio'nun başlattığı süreç) kasa okunamazsa bu dosya devreye girer.
+if (builder.Environment.IsDevelopment())
+    builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 // 1) Servisleri kaydet
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

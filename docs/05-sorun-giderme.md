@@ -84,6 +84,28 @@ Sorun hangi halkada?
 **Koddaki iyileştirme:** `AddInfrastructure` artık başlarken zorunlu ayarları kontrol eder ve hangisinin eksik olduğunu, hangi ortamda çalıştığını ve nasıl düzeltileceğini yazan açık bir hata verir. Testi: `AyarDogrulamaTests`.
 **Ders:** "Bende çalışıyor, sende çalışmıyor" sorunlarının çoğu, Git'e girmeyen ayarlardır (`.env`, `user-secrets`). Hata mesajı bunu söylemiyorsa, hata mesajını iyileştir.
 
+### 14. Ortam `Development` ama kasa (user-secrets) boş geliyor
+**Belirti:** `Eksik ayar(lar): ConnectionStrings:Sql, Mongo:Url, LiteLlm:Key. Çalışma ortamı: Development.` Yani ortam doğru, kasa kaynağı yüklü, ama değerler gelmiyor. `dotnet user-secrets list` ve komut satırında `dotnet run` ise çalışıyor.
+**Neden:** .NET kasa dosyasını Windows'un "bilinen AppData klasöründen" **değil, `APPDATA` ORTAM DEĞİŞKENİNDEN** bulur (yoksa `HOME`'dan). Süreç farklı veya eksik bir `APPDATA` ile başlarsa dosya diskte dururken .NET onu "yok" görür. Bunu bilerek sahte bir `APPDATA` vererek birebir yeniden ürettik.
+**Teşhis:** Hata mesajının altındaki **"Tanı bilgisi"** bölümü iki yeri yan yana gösterir:
+```
+APPDATA ortam değişkeni    : ...            <- .NET kasayı BURADAN arar
+Kasa (.NET'in baktığı yer) : ...\secrets.json (YOK)
+Kasa (Windows klasöründe)  : ...\secrets.json (VAR)
+```
+"baktığı yer: YOK" ama "Windows klasöründe: VAR" ise sorun budur. (Kasa dosyası hiç yoksa ikisi de YOK görünür.)
+**Çözüm (hemen):** `src/Asistan.Api/appsettings.Local.json` yedek dosyası. Development'ta, varsa, otomatik okunur; `.gitignore`'da olduğu için Git'e girmez. İçeriği:
+```json
+{
+  "ConnectionStrings": { "Sql": "<değer>" },
+  "Mongo": { "Url": "<değer>" },
+  "LiteLlm": { "Key": "<değer>" }
+}
+```
+Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içerir:** paylaşma, ekran görüntüsünde gösterme.
+**Kök neden:** Visual Studio sürecinin `APPDATA` değeri bu makinede doğrulanmadı. Tanı bilgisi bunu gösterir. Kök nedeni bulmadan da yedek dosya yeterlidir.
+**Ders:** Aynı kod iki farklı başlatma yolunda farklı davranıyorsa fark, kodda değil **sürecin ortamındadır** (ortam değişkenleri, kullanıcı, çalışma klasörü). Hata mesajına ortamı yazdırmak teşhisi dakikalara indirir.
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -91,7 +113,7 @@ Sorun hangi halkada?
 | Belirti | Olası neden | Çözüm |
 |---|---|---|
 | `Unable to resolve service for type '...'` | Servis DI'a kaydedilmemiş | `Program.cs` veya `DependencyInjection.cs`'e kayıt ekle |
-| Açılışta `Eksik ayar(lar): ...` hatası | Ortam Development değil veya kasa boş | Bkz. yukarıdaki #13: `http`/`https` profilini seç, `dotnet user-secrets list` ile kontrol et |
+| Açılışta `Eksik ayar(lar): ...` hatası | Ortam Development değil veya kasa boş | Ortam Development değilse #13, Development ama değerler boşsa #14 (yedek yol: `appsettings.Local.json`); mesajdaki "Tanı bilgisi"ne bak |
 | `Connection refused` (5432/27017/5672) | Docker servisi kapalı | `docker compose up -d`, `docker compose ps` |
 | `password authentication failed` (Postgres) | user-secrets'taki şifre `.env`'dekiyle uyuşmuyor | İkisini eşitle. Not: volume varsa Postgres **ilk açılıştaki** şifreyi tutar, `.env`'yi sonradan değiştirmek yetmez (veriyi silmek istemezsen şifreyi Postgres içinden değiştir; test verisi önemsizse `docker compose down -v`) |
 | `502` yanıtı `/api/sohbet`'ten | LiteLLM kapalı/yanlış anahtar/kredi yok | `docker compose logs litellm`, LiteLLM'e doğrudan istek |

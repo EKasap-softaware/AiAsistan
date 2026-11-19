@@ -56,6 +56,19 @@ public class AyarDogrulamaTests
     }
 
     [Fact]
+    public void AyarlariDogrula_Mesaji_SirIcermeyenTaniBilgisiVeYedekYoluIcerir()
+    {
+        var islem = () => DependencyInjection.AyarlariDogrula(Ayarlar());
+
+        var mesaj = islem.Should().Throw<InvalidOperationException>().Which.Message;
+        mesaj.Should().Contain("Tanı bilgisi")
+            .And.Contain("APPDATA ortam değişkeni")      // .NET kasayı buradan arar
+            .And.Contain("UserSecretsId")                   // (testhost'ta "derlemede YOK" yazar, gerçek API'de kasa yolları da çıkar)
+            .And.Contain("Ayar kaynakları")
+            .And.Contain("appsettings.Local.json");        // yedek yol
+    }
+
+    [Fact]
     public void AyarlariDogrula_HepsiVarsa_HataFirlatmaz()
     {
         var islem = () => DependencyInjection.AyarlariDogrula(Ayarlar(Hepsi));
