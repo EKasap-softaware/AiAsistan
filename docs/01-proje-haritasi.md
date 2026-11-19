@@ -44,7 +44,7 @@ Ok "bilir" demek. **Domain hiçbir şeyi bilmez.** Application sadece Domain'i b
 | Infrastructure | Application, Domain |
 | Api | Application, Infrastructure |
 | Worker | Application, Infrastructure |
-| Tests | Application, Domain |
+| Tests | Application, Domain, Infrastructure (sadece `AyarDogrulamaTests` için) |
 
 ---
 
@@ -217,7 +217,7 @@ Veritabanının C# karşılığı. `DbSet<Kullanici>` ve `DbSet<Abonelik>` tablo
 `ILlmIstemcisi`'nin gerçek hali. `POST /v1/chat/completions` ile LiteLLM'e konuşur (OpenAI formatı). Cevabın `choices[0].message.content` alanını okur. Hata kodu gelirse `EnsureSuccessStatusCode` ile `HttpRequestException` fırlatır.
 
 ### `DependencyInjection.cs`
-**Tüm kayıtlar tek yerde** (`AddInfrastructure`):
+**Tüm kayıtlar tek yerde** (`AddInfrastructure`). Önce `AyarlariDogrula` zorunlu ayarların (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`) varlığını kontrol eder; eksikse neyin eksik olduğunu ve nasıl düzeltileceğini yazan açık bir hata verir. Sonra kayıtlar:
 - `AddDbContext<AppDbContext>` → Postgres bağlantısı (`ConnectionStrings:Sql`).
 - `AddScoped<IKullaniciDeposu, KullaniciDeposu>`.
 - `AddSingleton<IMongoClient>` (bağlantı havuzu tutar, o yüzden Singleton) + `IMongoDatabase` (veritabanı adı `Mongo:Database`, varsayılan `asistan`) + `AddScoped<IMesajDeposu, MongoMesajDeposu>` + `AddScoped<IHafizaDeposu, MongoHafizaDeposu>` + `AddScoped<IOturumOzetDeposu, MongoOturumOzetDeposu>` + `AddHostedService<MongoIndexServisi>`.
@@ -293,6 +293,9 @@ Geçerli kayıt; e-posta küçük harfe çevirme; e-posta zaten var; geçersiz g
 
 ### `HafizaServisiTests.cs` (18 test sayılır)
 Küçük sayılarla (pencere 2, eşik 4) test edilir. **Bağlam:** hafıza/özet yoksa sistem prompt'u sadece temel metindir; varsa hafıza ve özet eklenir; özetlenmiş mesajlar atlanıp ham mesajlar sırayla gelir. **Özetleme:** eşik aşılmadıysa özetlemez; aşıldıysa doğru aralığı (`yeniSinir`) özetleyip kaydeder; önceki özet varsa yeni özet isteğine de girer. **Hafıza çıkarma:** yeni bilgiyi kaydeder; `YOK` / `yok.` / boş çıktıyı kaydetmez (5 girdi); zaten bilineni büyük/küçük harf farkıyla tekrarlamaz; 200 karakterden uzunu kaydetmez; çok satırlı çıktıyı tek satıra çevirir. **Dayanıklılık:** LLM hata verirse `SohbetSonrasiAsync` fırlatmaz; özetleme patlasa bile hafıza çıkarma denenir. **Yönetim:** silme depoya doğru iletilir.
+
+### `AyarDogrulamaTests.cs` (7 test sayılır)
+`AddInfrastructure`'ın zorunlu ayarları (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`) kontrolü: hiç ayar yoksa hepsini listeler; sadece biri eksikse sadece onu listeler; boş/boşluk değeri eksik sayar; hepsi varsa hata vermez; `AddInfrastructure` eksik ayarda servisleri kaydetmeden açık hata verir. Gerçek bağlantı kurulmaz (bağlantılar tembeldir).
 
 ### `Asistan.Tests.csproj`
 Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **7.\*** (okunaklı doğrulama; 8. sürüm ticari), `coverlet.collector` (kod kapsama), `Microsoft.NET.Test.Sdk`.

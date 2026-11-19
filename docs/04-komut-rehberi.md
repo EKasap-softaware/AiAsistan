@@ -199,7 +199,7 @@ git diff --staged   # eklenen satırlarda şifre/anahtar var mı?
 ```powershell
 docker compose ps                                  # 4 servis Up (3'ü healthy)
 dotnet build                                       # 0 hata, 0 uyarı
-dotnet test                                        # 37 test geçti
+dotnet test                                        # 44 test geçti
 Invoke-RestMethod http://localhost:5254/openapi/v1.json   # API çalışıyorsa JSON döner
 ```
 

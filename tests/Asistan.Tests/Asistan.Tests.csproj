@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Asistan.Application\Asistan.Application.csproj" />
     <ProjectReference Include="..\..\src\Asistan.Domain\Asistan.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Asistan.Infrastructure\Asistan.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

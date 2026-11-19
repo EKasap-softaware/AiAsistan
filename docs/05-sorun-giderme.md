@@ -75,6 +75,15 @@ Sorun hangi halkada?
 **Belirti:** `Cannot convert lambda expression to type 'Task<string>'`. Moq'un `SetupSequence`'i sadece sabit değer kabul eder, delege kabul etmez.
 **Çözüm:** Normal `Setup(...).Returns((args) => ...)` kullanıp sayaçla sırayla cevap veren ve gelen istekleri bir listeye kaydeden küçük bir yardımcı yazıldı (`HafizaServisiTests.LlmKaydet`).
 
+### 13. `ArgumentNullException: Value cannot be null. (Parameter 'connectionString')` (MongoClient satırında)
+**Belirti:** Uygulama açılırken `new MongoClient(config["Mongo:Url"])` satırında çöker.
+**Neden:** `Mongo:Url` (ve `ConnectionStrings:Sql`, `LiteLlm:Key`) Git'te **yoktur**; geliştirmede `user-secrets` kasasından okunur. Kasa ise **sadece `Development` ortamında yüklenir**. Uygulama Production ortamında (ya da ayarlar hiç yoksa) başlarsa değer `null` gelir ve MongoDB sürücüsü anlamsız bir hata fırlatır. Bunu bilerek Production'da başlatıp birebir yeniden ürettik.
+**Çözüm (en sık):** Visual Studio'da çalıştır düğmesinin yanındaki oktan **`http` veya `https`** profilini seç (IIS Express veya başka bir profil değil). Bu profiller `ASPNETCORE_ENVIRONMENT=Development` ayarlar. Komut satırında: `dotnet run --project src/Asistan.Api --launch-profile http` (`--no-launch-profile` **kullanma**: ortam Production kalır).
+**Kasada gerçekten yoksa** (yeni bilgisayar, silinmiş): `dotnet user-secrets list -p src/Asistan.Api` ile bak (değerler görünür, ekranı paylaşma). Eksikleri `dotnet user-secrets set "Mongo:Url" "<değer>" -p src/Asistan.Api` ile ekle (değerler `.env`'den; bkz. `04-komut-rehberi.md`).
+**Sunucuda / Docker'da:** Kasa kullanılmaz, **ortam değişkeni** ver: `:` yerine `__` yaz (`Mongo__Url`, `LiteLlm__Key`, `ConnectionStrings__Sql`).
+**Koddaki iyileştirme:** `AddInfrastructure` artık başlarken zorunlu ayarları kontrol eder ve hangisinin eksik olduğunu, hangi ortamda çalıştığını ve nasıl düzeltileceğini yazan açık bir hata verir. Testi: `AyarDogrulamaTests`.
+**Ders:** "Bende çalışıyor, sende çalışmıyor" sorunlarının çoğu, Git'e girmeyen ayarlardır (`.env`, `user-secrets`). Hata mesajı bunu söylemiyorsa, hata mesajını iyileştir.
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -82,6 +91,7 @@ Sorun hangi halkada?
 | Belirti | Olası neden | Çözüm |
 |---|---|---|
 | `Unable to resolve service for type '...'` | Servis DI'a kaydedilmemiş | `Program.cs` veya `DependencyInjection.cs`'e kayıt ekle |
+| Açılışta `Eksik ayar(lar): ...` hatası | Ortam Development değil veya kasa boş | Bkz. yukarıdaki #13: `http`/`https` profilini seç, `dotnet user-secrets list` ile kontrol et |
 | `Connection refused` (5432/27017/5672) | Docker servisi kapalı | `docker compose up -d`, `docker compose ps` |
 | `password authentication failed` (Postgres) | user-secrets'taki şifre `.env`'dekiyle uyuşmuyor | İkisini eşitle. Not: volume varsa Postgres **ilk açılıştaki** şifreyi tutar, `.env`'yi sonradan değiştirmek yetmez (veriyi silmek istemezsen şifreyi Postgres içinden değiştir; test verisi önemsizse `docker compose down -v`) |
 | `502` yanıtı `/api/sohbet`'ten | LiteLLM kapalı/yanlış anahtar/kredi yok | `docker compose logs litellm`, LiteLLM'e doğrudan istek |

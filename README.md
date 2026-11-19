@@ -11,7 +11,7 @@
 | 1 | Solution iskeleti | ✅ |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | ✅ |
 | 3 | EF Core + `/api/kullanicilar` | ✅ |
-| 4 | Unit testler | ✅ (37 test) |
+| 4 | Unit testler | ✅ (44 test) |
 | 5 | CI (GitHub Actions) | ✅ dosya hazır, Actions sekmesinden doğrulanacak |
 | 6 | LiteLLM + `/api/sohbet` | ✅ Claude cevap veriyor |
 | 7 | MongoDB sohbet geçmişi | ✅ soru-cevap kaydediliyor |
@@ -37,7 +37,9 @@ dotnet test                      # testleri çalıştır
 dotnet run --project src/Asistan.Api --launch-profile http
 ```
 
-API açılınca: http://localhost:5254/scalar/v1
+API açılınca: http://localhost:5254/scalar/v1 (Visual Studio'da `http` veya `https` profiliyle F5 bunu kendiliğinden açar)
+
+> **Önemli:** API'nin bağlantı bilgileri (`Mongo:Url`, `ConnectionStrings:Sql`, `LiteLlm:Key`) Git'te yok; `user-secrets` kasasından okunur ve kasa **sadece `Development` ortamında** yüklenir. Visual Studio'da `http`/`https` profilini seç; komut satırında `--no-launch-profile` kullanma. Eksik ayar varsa uygulama açılırken neyin eksik olduğunu yazan bir hata verir (bkz. `docs/05-sorun-giderme.md` #13).
 
 Örnek istekler: `src/Asistan.Api/Asistan.Api.http`
 

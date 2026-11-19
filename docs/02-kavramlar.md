@@ -142,7 +142,7 @@ var cevap = await servis.SorAsync(...);   // beklerken sunucu başka istekleri i
 
 | Tür | Neyi sınar | Hız | Projede |
 |---|---|---|---|
-| Unit | Tek sınıf, bağımlılıklar sahte | ms | 37 test var |
+| Unit | Tek sınıf, bağımlılıklar sahte | ms | 44 test var |
 | Integration | Gerçek DB/HTTP ile birkaç parça | sn | Yok (ileride) |
 | End-to-end | Tüm sistem | dk | Yok |
 
