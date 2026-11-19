@@ -1,0 +1,4 @@
+## Test
+- Her yeni servise unit test yaz.
+- Dis sistemleri Moq ile sahtele.
+- Hata yolunda Times.Never ile kaydi dogrula.

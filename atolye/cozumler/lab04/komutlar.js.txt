@@ -1,0 +1,13 @@
+db = db.getSiblingDB('atolye')
+db.siparisler.insertMany([
+  { musteri: 'Ali',  tutar: 120, durum: 'bekliyor', olusturulma: new Date() },
+  { musteri: 'Ayse', tutar: 80,  durum: 'bekliyor', olusturulma: new Date() },
+  { musteri: 'Ali',  tutar: 45,  durum: 'tamamlandi', olusturulma: new Date() },
+  { musteri: 'Can',  tutar: 300, durum: 'bekliyor', olusturulma: new Date() },
+  { musteri: 'Ayse', tutar: 60,  durum: 'iptal', olusturulma: new Date() }
+])
+db.siparisler.createIndex({ musteri: 1 })
+db.siparisler.createIndex({ durum: 1, tutar: -1 })
+db.siparisler.createIndex({ olusturulma: 1 }, { expireAfterSeconds: 3600 })
+db.siparisler.aggregate([{ $group: { _id: '$musteri', toplam: { $sum: '$tutar' } } }, { $out: 'musteri_toplam' }])
+db.siparisler.updateOne({ musteri: 'Can' }, { $set: { durum: 'tamamlandi', guncellenme: new Date() } })

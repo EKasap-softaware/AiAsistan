@@ -1,0 +1,30 @@
+// -> src/Asistan.Application/Etiketler/EtiketServisi.cs
+using Asistan.Domain.Entities;
+
+namespace Asistan.Application.Etiketler;
+
+public interface IEtiketDeposu
+{
+    Task EkleAsync(Etiket etiket, CancellationToken ct = default);
+    Task<IReadOnlyList<Etiket>> ListeleAsync(CancellationToken ct = default);
+}
+
+public interface IEtiketServisi
+{
+    Task<Etiket> OlusturAsync(string ad, CancellationToken ct = default);
+}
+
+public class EtiketServisi(IEtiketDeposu depo) : IEtiketServisi
+{
+    public async Task<Etiket> OlusturAsync(string ad, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(ad))
+            throw new ArgumentException("Etiket adı boş olamaz.", nameof(ad));
+        if (ad.Trim().Length > 50)
+            throw new ArgumentException("Etiket adı en fazla 50 karakter olabilir.", nameof(ad));
+
+        var etiket = new Etiket { Ad = ad.Trim() };
+        await depo.EkleAsync(etiket, ct);
+        return etiket;
+    }
+}

@@ -1,0 +1,8 @@
+---
+name: test-yaz
+description: Yeni bir servis sinifi icin unit test yazarken kullan. xUnit, Moq ve FluentAssertions ile AAA duzeninde test uretir.
+---
+1. Servisin bagimliliklarini (arayuzleri) bul.
+2. Her bagimliligi Moq ile sahtele.
+3. Gecerli durum, bos girdi ve sinir deger icin ayri test yaz.
+4. Hata durumunda "kaydedilmedi" dogrulamasi (Times.Never) ekle.

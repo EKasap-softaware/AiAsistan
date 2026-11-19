@@ -1,0 +1,3 @@
+Akisi panelden kur ve Export et: langflow/atolye-akisi.json
+Ornek yapi icin: langflow/dokuman-asistani.json
+Anahtar: Settings > Global Variables > Credential

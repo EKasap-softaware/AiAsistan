@@ -28,3 +28,6 @@
 
 ## MCP
 `.mcp.json`: `mongodb` (SALT-OKUNUR kullanıcı + `--readOnly`) ve `github` (token ortam değişkeninden). Üretim verisine bağlama.
+
+## Atölye
+`atolye/` kişisel öğrenme laboratuvarı (10 seviye). `atolye/kum/`, `atolye/.ilerleme.json` git'e girmez. Doğrulayıcılar: `atolye/labs/`.

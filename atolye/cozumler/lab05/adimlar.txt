@@ -1,0 +1,6 @@
+Panel (http://localhost:15672):
+1. Queues > Add: atolye.kuyruk, Durable, Arguments: x-dead-letter-exchange = atolye.olu (String)
+2. Exchanges > Add: atolye.olu (fanout) ; Queues > Add: atolye.olu-kuyruk ; atolye.olu > Bindings > To queue atolye.olu-kuyruk
+3. Exchanges > (AMQP default) > Publish: routing key atolye.kuyruk, 3 kez
+4. Queues > atolye.kuyruk > Get messages: "Ack message requeue false" (1 mesaj)
+5. Ayni yerde "Reject requeue false" (1 mesaj) -> atolye.olu-kuyruk'ta 1 mesaj gorunur

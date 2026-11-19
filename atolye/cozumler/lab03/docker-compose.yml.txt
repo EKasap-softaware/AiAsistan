@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    ports: ["18098:8000"]
+    environment:
+      MESAJ: "compose ile calisiyorum"
+    volumes:
+      - veri:/veri
+volumes:
+  veri:

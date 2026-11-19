@@ -1,0 +1,33 @@
+// -> tests/Asistan.Tests/KonusmaPenceresiTests.cs
+using Asistan.Application.Bellek;
+using FluentAssertions;
+
+namespace Asistan.Tests;
+
+public class KonusmaPenceresiTests
+{
+    [Fact]
+    public void SonN_SonElemanlariSiraylaDondurur()
+        => KonusmaPenceresi.SonN(new[] { "a", "b", "c" }, 2).Should().Equal("b", "c");
+
+    [Fact]
+    public void SonN_NSayidanBuyuk_HepsiniDondurur()
+        => KonusmaPenceresi.SonN(new[] { "a" }, 9).Should().Equal("a");
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void SonN_SifirVeyaNegatif_Bos(int n)
+        => KonusmaPenceresi.SonN(new[] { "a" }, n).Should().BeEmpty();
+
+    [Fact]
+    public void OzetGerekliMi_EsiktaTrue_AltindaFalse()
+    {
+        KonusmaPenceresi.OzetGerekliMi(20, 20).Should().BeTrue();
+        KonusmaPenceresi.OzetGerekliMi(19, 20).Should().BeFalse();
+    }
+
+    [Fact]
+    public void HafizaFiltrele_YOKTekrarVeCokSatiriEler()
+        => KonusmaPenceresi.HafizaFiltrele(new[] { "YOK", "a\nb", "Kahve", "kahve" }).Should().Equal("Kahve");
+}

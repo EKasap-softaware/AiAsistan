@@ -1,0 +1,50 @@
+using Asistan.Application.Bellek;
+using FluentAssertions;
+
+namespace Asistan.Tests;
+
+public class AtolyeLab07Gizli
+{
+    [Fact]
+    public void SonN_SonIkiyiSiraylaDondurur()
+        => KonusmaPenceresi.SonN(new[] { "a", "b", "c", "d" }, 2).Should().Equal("c", "d");
+
+    [Fact]
+    public void SonN_NSayidanBuyuk_HepsiniDondurur()
+        => KonusmaPenceresi.SonN(new[] { "a", "b" }, 5).Should().Equal("a", "b");
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void SonN_SifirVeyaNegatif_BosDondurur(int n)
+        => KonusmaPenceresi.SonN(new[] { "a", "b" }, n).Should().BeEmpty();
+
+    [Fact]
+    public void OzetGerekliMi_EsiktaTrue() => KonusmaPenceresi.OzetGerekliMi(20, 20).Should().BeTrue();
+
+    [Fact]
+    public void OzetGerekliMi_EsikAltindaFalse() => KonusmaPenceresi.OzetGerekliMi(19, 20).Should().BeFalse();
+
+    [Fact]
+    public void HafizaFiltrele_TrimEder()
+        => KonusmaPenceresi.HafizaFiltrele(new[] { "  Kahve sever  " }).Should().Equal("Kahve sever");
+
+    [Fact]
+    public void HafizaFiltrele_YOKuAtar()
+        => KonusmaPenceresi.HafizaFiltrele(new[] { "YOK", "yok", " Yok ", "Gercek bilgi" }).Should().Equal("Gercek bilgi");
+
+    [Fact]
+    public void HafizaFiltrele_CokSatirliyiAtar()
+        => KonusmaPenceresi.HafizaFiltrele(new[] { "satir1\nsatir2", "tek satir" }).Should().Equal("tek satir");
+
+    [Fact]
+    public void HafizaFiltrele_200Kalir_201Atilir()
+    {
+        var sonuc = KonusmaPenceresi.HafizaFiltrele(new[] { new string('a', 200), new string('b', 201) });
+        sonuc.Should().ContainSingle().Which.Should().HaveLength(200);
+    }
+
+    [Fact]
+    public void HafizaFiltrele_TekrariAtarIlkiniKorur()
+        => KonusmaPenceresi.HafizaFiltrele(new[] { "Kahve sever", "kahve SEVER", "Cay icer" }).Should().Equal("Kahve sever", "Cay icer");
+}

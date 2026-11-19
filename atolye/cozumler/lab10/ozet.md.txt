@@ -1,0 +1,1 @@
+Su dosyayi 5 maddede ozetle ve riskli yerleri belirt: $ARGUMENTS

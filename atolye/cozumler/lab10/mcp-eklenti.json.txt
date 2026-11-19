@@ -1,0 +1,1 @@
+"dosya-okuyucu": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"] }

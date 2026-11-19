@@ -1,0 +1,9 @@
+// -> src/Asistan.Domain/Entities/Etiket.cs
+namespace Asistan.Domain.Entities;
+
+public class Etiket
+{
+    public int Id { get; set; }
+    public string Ad { get; set; } = null!;
+    public DateTime Olusturulma { get; set; } = DateTime.UtcNow;
+}

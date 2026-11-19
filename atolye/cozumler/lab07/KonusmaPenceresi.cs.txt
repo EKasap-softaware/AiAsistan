@@ -1,0 +1,28 @@
+// -> src/Asistan.Application/Bellek/KonusmaPenceresi.cs
+namespace Asistan.Application.Bellek;
+
+public static class KonusmaPenceresi
+{
+    public static IReadOnlyList<string> SonN(IReadOnlyList<string> mesajlar, int n)
+    {
+        if (n <= 0) return Array.Empty<string>();
+        return mesajlar.TakeLast(n).ToList();
+    }
+
+    public static bool OzetGerekliMi(int mesajSayisi, int esik) => mesajSayisi >= esik;
+
+    public static IReadOnlyList<string> HafizaFiltrele(IEnumerable<string> adaylar)
+    {
+        var gorulen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sonuc = new List<string>();
+        foreach (var aday in adaylar)
+        {
+            var s = (aday ?? "").Trim();
+            if (s.Length == 0 || s.Length > 200) continue;                              // bos / cok uzun
+            if (s.Equals("YOK", StringComparison.OrdinalIgnoreCase)) continue;          // modelin "bilgi yok" cevabi
+            if (s.Contains('\n') || s.Contains('\r')) continue;                         // tek satir olmali
+            if (gorulen.Add(s)) sonuc.Add(s);                                           // tekrarlari ele
+        }
+        return sonuc;
+    }
+}

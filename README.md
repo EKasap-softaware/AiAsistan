@@ -55,3 +55,7 @@ API açılınca: http://localhost:5254/scalar/v1 (Visual Studio'da `http` veya `
 
 - Docker şifreleri ve API anahtarı: `.env` (Git'e girmez)
 - API'nin bağlantı bilgileri: `dotnet user-secrets` (makineye özel)
+
+
+## Atölye (yaparak öğren)
+10 seviyeli, otomatik doğrulamalı alıştırma: `./atolye/atolye.ps1` (ayrıntı: `atolye/README.md`).

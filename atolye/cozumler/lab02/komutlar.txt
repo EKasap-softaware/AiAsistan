@@ -1,0 +1,14 @@
+cd atolye/kum/lab02
+git init -b main
+echo "merhaba" > a.txt ; git add a.txt ; git commit -m "feat: a.txt eklendi"
+echo "dunya" >> a.txt ; git commit -am "fix: selamlama tamamlandi"
+git switch -c ozellik/selam ; echo selam > selam.txt ; git add . ; git commit -m "feat: selam dosyasi"
+git switch main ; git merge --no-ff ozellik/selam -m "Merge branch 'ozellik/selam'"
+# cakisma: iki dalda ayni satir
+git switch -c ozellik/a ; (a.txt ilk satir = AAA) ; git commit -am "feat: A"
+git switch main ; git switch -c ozellik/b ; (a.txt ilk satir = BBB) ; git commit -am "feat: B"
+git switch main ; git merge --no-ff ozellik/a ; git merge --no-ff ozellik/b   # CONFLICT
+# dosyayi duzelt (isaretleri sil) ; git add a.txt ; git commit --no-edit
+git revert HEAD~1 --no-edit    # (bir commit hash'i ver)
+echo ".env" > .gitignore ; git add .gitignore ; git commit -m "chore: gitignore"
+git tag -a v0.1 -m "ilk surum"

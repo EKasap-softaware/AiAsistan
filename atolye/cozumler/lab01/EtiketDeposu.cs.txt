@@ -1,0 +1,18 @@
+// -> src/Asistan.Infrastructure/Persistence/EtiketDeposu.cs
+using Asistan.Application.Etiketler;
+using Asistan.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Asistan.Infrastructure.Persistence;
+
+public class EtiketDeposu(AppDbContext db) : IEtiketDeposu
+{
+    public async Task EkleAsync(Etiket etiket, CancellationToken ct = default)
+    {
+        db.Etiketler.Add(etiket);
+        await db.SaveChangesAsync(ct);   // SQL burada çalışır
+    }
+
+    public async Task<IReadOnlyList<Etiket>> ListeleAsync(CancellationToken ct = default)
+        => await db.Etiketler.AsNoTracking().OrderBy(e => e.Ad).ToListAsync(ct);
+}

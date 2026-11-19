@@ -488,3 +488,7 @@ coverage/
 
 # Gelistirme icin yerel gizli ayarlar (yedek yol, user-secrets okunamazsa)
 appsettings.Local.json
+
+# Atolye (kisisel ilerleme ve deneme klasorleri)
+atolye/kum/
+atolye/.ilerleme.json
