@@ -80,6 +80,19 @@ Bu yolculuk artık **iki program** arasında geçer: API (garson) ve Worker (mut
       { durum: "Bekliyor" }  ──►  { durum: "Isleniyor" }  ──►  { durum: "Tamamlandi", cevap: "..." }
 ```
 
+**Doküman modu (Aşama 10): aynı yolculuk, Worker'daki adım 4b farklı**
+```
+POST /api/sohbet  { ..., "mod": "dokuman" }   (mod yoksa "sohbet")
+   API: mod doğrulanır (bilinmeyen ──► 400), fiş ve kuyruk mesajı "mod" taşır
+Worker, AiIstegiConsumer:
+   mod == "dokuman" ──► DokumanServisi.SorAsync
+        ├─ LangFlowIstemcisi ──► POST LangFlow /api/v1/run/dokuman-asistani
+        │      LangFlow akışı: /projedocs/*.md oku ─► birleştir ─► prompt ─► LiteLLM ─► Claude
+        └─ soru + cevap MongoDB "mesajlar"
+   (hafıza/özet adımı YOK: SohbetTamamlandi mesajı gönderilmez)
+```
+Cevap, dokümanda yoksa "Bu bilgi dokümanlarda yok." olur (prompt'taki kural).
+
 **Hata yolu (model/ağ çökerse):**
 ```
 Worker denemesi başarısız ──► 5 kez yeniden dene (bekleme süresi artar: ~11, 17, 22, 34 sn)
@@ -159,6 +172,14 @@ Worker denemesi başarısız ──► 5 kez yeniden dene (bekleme süresi artar
 - **Canlı doğrulama (3 senaryo, bkz. Yolculuk 2):** Worker kapalı, LiteLLM kapalı, RabbitMQ kapalı. Üçüncüsü **gerçek bir kusur buldu**: API 70+ sn asılı kalıyor ve fiş sonsuza dek `Bekliyor` kalıyordu. Düzeltme: gönderime 5 sn sınır (`WaitAsync`), başarısızsa fiş `Hata`, API 503; iki test eklendi. Düzeltilmiş kodla yeniden denendi: 503 (5.1 sn), RabbitMQ geri gelince her şey toparlandı.
 - Test verileri ve `_error` kuyruğu temizlendi.
 
+### Aşama 10: LangFlow · `feat: LangFlow dokuman modu (akis, istemci, guvenlik ayarlari)`
+- **Servis:** `docker-compose.yml`'a LangFlow 1.13.3 (sürüm sabit, giriş zorunlu, `.env`'de süper kullanıcı/şifre/gizli anahtar). `./docs` → container'da `/projedocs` (salt-okunur).
+- **Akış:** API'den kodla kuruldu: `Chat Input, Directory, Parser, Prompt Template, OpenAI (LiteLLM'e bağlı), Chat Output`. Anahtar akışa gömülmedi: `LITELLM_KEY` gizli değişkeni. Akış `langflow/dokuman-asistani.json` olarak export edildi (içinde hiçbir sır olmadığı **taranarak** doğrulandı) ve `scripts/langflow-akisi-yukle.ps1` ile geri yüklenebildiği **canlı test edildi**.
+- **.NET:** `ILangFlowIstemcisi`/`LangFlowIstemcisi`, `DokumanServisi`, `SohbetModlari`; `AiIstegi`/`IsKaydi`'ne `Mod`; `AiIstegiConsumer` mod'a göre yönlendirir; API `mod` kabul eder (bilinmeyen → 400).
+- **Yolda yaşanan 6 gerçek sorun** (hepsi `05-sorun-giderme.md` #18-#23 ve `dersler/01-langflow.md`'de): LangFlow veritabanı volume'de değildi, container yenilenince akışlar silindi; Directory izinli klasör ayarı JSON listesi olarak metin okundu; yerel dosya erişimi kısıtı; SSRF koruması `litellm` adını engelledi; LiteLLM `seed` parametresi için `drop_params` istedi; LangFlow veritabanı sıfırlanınca API anahtarı geçersizleşti.
+- **Test:** 60 → 74. **Canlı doğrulama:** dokümanda olan soru doğru ve kaynak dosyalarla cevaplandı; dokümanda **olmayan** soru ("2027 pazarlama bütçesi") "Bu bilgi dokümanlarda yok." döndü (uydurmadı); normal sohbet etkilenmedi; bilinmeyen mod 400. Dersler klasörünün asistan tarafından **okunmadığı** da soruyla doğrulandı.
+- **Ders:** `docs/dersler/` klasörü başladı (`00-ders-plani.md`, `01-langflow.md`).
+
 ### Temizlik · `docs: README ve gercek .http ornekleri`, `docs: ogrenme rehberi`
 - Şablondan kalan hatalı `.http` dosyası gerçek isteklerle değiştirildi, README ve bu rehber eklendi.
 
@@ -168,7 +189,6 @@ Worker denemesi başarısız ──► 5 kez yeniden dene (bekleme süresi artar
 
 | Aşama | Yapılacak | Çıktı |
 |---|---|---|
-| 10 | LangFlow RAG akışı | Asistan dokümanlardan cevap veriyor |
 | 11 | Dockerfile, CD, skill, MCP | `main`'e merge = otomatik yayın |
 
 **Her aşamadaki çalışma ritmi:** yeni branch → rehberdeki bölümü oku → kodu yaz → test yaz → `dotnet test` → commit → push → PR → CI yeşil → merge → "ne öğrendim?" sorusunu 3 cümleyle yanıtla.

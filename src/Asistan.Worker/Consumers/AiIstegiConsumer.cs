@@ -1,11 +1,16 @@
+using Asistan.Application.Dokuman;
 using Asistan.Application.Kuyruk;
 using Asistan.Application.Sohbet;
 using MassTransit;
 
 namespace Asistan.Worker.Consumers;
 
-// Kuyruktan "ai-istegi" mesajını alıp soruyu modele soran aşçı.
-public class AiIstegiConsumer(IIsDeposu isler, ISohbetServisi sohbet, ILogger<AiIstegiConsumer> log) : IConsumer<AiIstegi>
+// Kuyruktan "ai-istegi" mesajını alıp soruyu cevaplayan aşçı.
+public class AiIstegiConsumer(
+    IIsDeposu isler,
+    ISohbetServisi sohbet,
+    IDokumanServisi dokuman,
+    ILogger<AiIstegiConsumer> log) : IConsumer<AiIstegi>
 {
     public async Task Consume(ConsumeContext<AiIstegi> ctx)
     {
@@ -20,18 +25,25 @@ public class AiIstegiConsumer(IIsDeposu isler, ISohbetServisi sohbet, ILogger<Ai
             return;
         }
 
-        // 2) Asıl iş: bağlamı kur, modele sor, soru-cevabı MongoDB'ye kaydet.
-        //    Hata fırlarsa MassTransit retry kuralı devreye girer (Program.cs): 1 sn, 6 sn, 11 sn...
-        var sonuc = await sohbet.SorAsync(m.KullaniciId, m.Soru, m.OturumId, ct);
+        // 2) Asıl iş: mod'a göre doğru servise yönlendir. Hata fırlarsa MassTransit retry kuralı devreye girer.
+        //    sohbet : hafızalı normal sohbet (bağlamı kur, LiteLLM'e sor, kaydet)
+        //    dokuman: proje dokümanlarını okuyan LangFlow akışına sor, kaydet
+        var dokumanModu = m.Mod == SohbetModlari.Dokuman;
+        var sonuc = dokumanModu
+            ? await dokuman.SorAsync(m.KullaniciId, m.Soru, m.OturumId, ct)
+            : await sohbet.SorAsync(m.KullaniciId, m.Soru, m.OturumId, ct);
 
         // 3) Cevabı takip fişine yaz: kullanıcı GET /api/isler/{isId} ile artık görebilir.
         await isler.TamamlaAsync(m.IsId, sonuc.Cevap, ct);
 
-        // 4) Arka plan işini (özetleme + hafıza çıkarma) AYRI bir mesajla sıraya koy.
-        //    Kullanıcı cevabı almak için bu işi beklemez.
-        var uc = await ctx.GetSendEndpoint(new Uri($"queue:{KuyrukAdlari.SohbetTamamlandi}"));
-        await uc.Send(new SohbetTamamlandi(m.KullaniciId, sonuc.OturumId, m.Soru, sonuc.Cevap), ct);
+        // 4) Arka plan işi (özetleme + hafıza çıkarma) SADECE sohbet modunda: doküman soruları kullanıcı
+        //    hakkında kalıcı bilgi taşımaz ve hafızayı kirletmesin.
+        if (!dokumanModu)
+        {
+            var uc = await ctx.GetSendEndpoint(new Uri($"queue:{KuyrukAdlari.SohbetTamamlandi}"));
+            await uc.Send(new SohbetTamamlandi(m.KullaniciId, sonuc.OturumId, m.Soru, sonuc.Cevap), ct);
+        }
 
-        log.LogInformation("İş {IsId} tamamlandı.", m.IsId);
+        log.LogInformation("İş {IsId} tamamlandı (mod: {Mod}).", m.IsId, m.Mod);
     }
 }

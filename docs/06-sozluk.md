@@ -69,7 +69,13 @@ Alfabetik. Soldaki terim, sağda kısa ve sade açıklama.
 | **JSON** | Veriyi `{ "ad": "Emre" }` biçiminde yazan metin formatı. |
 | **Kayan pencere (sliding window)** | Modele sadece son N mesajı göndermek; eskiler özetlenir ya da unutulur. |
 | **Kısa süreli hafıza** | Bir oturumun konuşması: özet + ham son mesajlar. |
-| **LangFlow** | AI akışlarını sürükle-bırak kuran araç (Aşama 10). |
+| **LangFlow** | AI akışlarını sürükle-bırak kuran araç; her akış bir REST adresi olur (bkz. `dersler/01-langflow.md`). |
+| **Bileşen (LangFlow)** | Akıştaki tek işlik hazır kutu (Directory, Parser, Prompt Template, OpenAI...). |
+| **Chunk** | RAG'de dokümanın küçük parçalara bölünmüş her bir parçası. |
+| **Context stuffing (bağlam doldurma)** | Tüm dokümanı her soruda modele vermek. Basit ve küçük dokümanda iyi, büyüyünce pahalı ve sınırlı; çözümü gerçek RAG. |
+| **Global değişken (LangFlow)** | Akışın dışında saklanan, adıyla çağrılan değer; "credential" olursa şifreli. Anahtarı akış dosyasına gömmemek için kullanılır. |
+| **SSRF** | Sunucuyu, saldırganın yerine iç ağdaki adreslere istek attırma saldırısı. LangFlow özel IP'lere isteği varsayılan engeller. |
+| **Vektör veritabanı** | Embedding vektörlerini saklayıp "en benzer parçaları bul" araması yapan veritabanı. |
 | **LINQ** | C#'ta koleksiyon ve veritabanı sorgulama sözdizimi (`Where`, `Select`). |
 | **LiteLLM** | Birçok LLM'e tek OpenAI uyumlu kapıdan erişim sağlayan araç. |
 | **LLM** | Large Language Model: Claude, GPT gibi dil modelleri. |

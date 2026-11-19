@@ -20,7 +20,9 @@ public class AyarDogrulamaTests
         ("LiteLlm:Key", "anahtar"),
         ("RabbitMq:Host", "localhost"),
         ("RabbitMq:Username", "kullanici"),
-        ("RabbitMq:Password", "sifre")
+        ("RabbitMq:Password", "sifre"),
+        ("LangFlow:BaseUrl", "http://localhost:7860"),
+        ("LangFlow:ApiKey", "lf-anahtar")
     ];
 
     [Fact]
@@ -33,6 +35,7 @@ public class AyarDogrulamaTests
             .Contain("ConnectionStrings:Sql").And.Contain("Mongo:Url")
             .And.Contain("LiteLlm:BaseUrl").And.Contain("LiteLlm:Key")
             .And.Contain("RabbitMq:Host").And.Contain("RabbitMq:Username").And.Contain("RabbitMq:Password")
+            .And.Contain("LangFlow:BaseUrl").And.Contain("LangFlow:ApiKey")
             .And.Contain("Development").And.Contain("user-secrets");
     }
 

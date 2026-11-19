@@ -167,6 +167,24 @@ Deneyler (Worker + API çalışırken; her biri bir sonuç öğretir):
 | `docker compose stop rabbitmq` | API 5 sn sonra **503**; fiş `Hata`. `docker compose start rabbitmq` ile geri aç, birkaç sn sonra her şey toparlanır |
 > **Panel ve sayaçlar birkaç sn gecikmeli yenilenir.** "0" gördüğünde sayfayı yenile veya birkaç sn bekle, ya da `rabbitmqctl` ile sunucuya sor.
 
+### LangFlow (doküman asistanı)
+```powershell
+docker compose up -d langflow                      # başlat (ilk açılış ~1 dk, imaj 3.6 GB)
+docker compose logs langflow --tail 50             # günlük
+# Arayüz: http://localhost:7860  (kullanıcı/şifre: .env içindeki LANGFLOW_SUPERUSER / LANGFLOW_SUPERUSER_PASSWORD)
+
+# Akışı (yeniden) yükle: LITELLM_KEY değişkenini oluşturur, langflow/dokuman-asistani.json'u yükler
+powershell -ExecutionPolicy Bypass -File scripts\langflow-akisi-yukle.ps1
+```
+Doküman modunda soru (API ve Worker çalışırken):
+```powershell
+$r = Invoke-RestMethod -Method Post -Uri http://localhost:5254/api/sohbet -ContentType 'application/json' `
+  -Body '{"kullaniciId":"1","soru":"Worker kapalıyken sorulara ne olur?","mod":"dokuman"}'
+do { Start-Sleep 2; $i = Invoke-RestMethod "http://localhost:5254/api/isler/$($r.isId)" } until ($i.durum -in "Tamamlandi","Hata")
+$i.cevap
+```
+> Compose ayarı (ortam değişkeni) değişince `docker compose up -d langflow` kullan; `restart` yetmez. `docker compose down -v` LangFlow'daki akışları da siler (akışın kopyası Git'te).
+
 ### Hafıza ayarlarını geçici değiştirmek (özetlemeyi hızlı görmek için)
 Normalde özetleme 20 mesajdan sonra başlar. Denemek için eşiği ortam değişkeniyle küçültebilirsin (sadece o terminal oturumunda geçerli, dosyaya yazılmaz):
 ```powershell
@@ -221,7 +239,7 @@ git diff --staged   # eklenen satırlarda şifre/anahtar var mı?
 ```powershell
 docker compose ps                                  # 4 servis Up (3'ü healthy)
 dotnet build                                       # 0 hata, 0 uyarı
-dotnet test                                        # 60 test geçti
+dotnet test                                        # 74 test geçti
 Invoke-RestMethod http://localhost:5254/openapi/v1.json   # API çalışıyorsa JSON döner
 ```
 

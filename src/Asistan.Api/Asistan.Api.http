@@ -16,6 +16,12 @@ Content-Type: application/json
 
 { "kullaniciId": "1", "soru": "Merhaba, ben Emre. C# öğreniyorum." }
 
+### DOKÜMAN MODU: proje dokümanlarından cevap (LangFlow akışı). Dokümanda yoksa "Bu bilgi dokümanlarda yok." der.
+POST {{host}}/api/sohbet
+Content-Type: application/json
+
+{ "kullaniciId": "1", "soru": "Worker kapalıyken gelen sorulara ne olur?", "mod": "dokuman" }
+
 ### İşin durumu: Bekliyor -> Isleniyor -> Tamamlandi (cevap burada). Birkaç kez çalıştır.
 GET {{host}}/api/isler/BURAYA-IS-ID
 

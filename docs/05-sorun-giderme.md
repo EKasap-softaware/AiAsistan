@@ -120,6 +120,31 @@ Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içe
 **Neden (çoğu zaman):** **Worker çalışmıyor.** API sadece soruyu kuyruğa bırakır; cevabı Worker üretir.
 **Çözüm:** `dotnet run --project src/Asistan.Worker` (ayrı bir terminal) ya da Visual Studio'da *Multiple startup projects*. Kuyrukta `tüketici` sayısı 0 ise Worker kapalıdır (`rabbitmqctl list_queues`). Worker açılınca bekleyen sorular kendiliğinden işlenir, hiçbiri kaybolmaz.
 
+### 18. LangFlow'da akışlar ve değişkenler container yenilenince kayboldu
+**Belirti:** `docker compose up -d langflow` sonrası akış listesi boş, `LITELLM_KEY` yok, API anahtarı geçersiz (403).
+**Neden:** LangFlow veritabanını volume'e bağladığımız `/app/langflow`'a değil, kütüphane klasörüne yazıyordu.
+**Çözüm:** `LANGFLOW_SAVE_DB_IN_CONFIG_DIR: "true"`. Kalıcılık yeniden oluşturarak **kanıtlandı**. Akışın kopyası Git'te (`langflow/`), `scripts/langflow-akisi-yukle.ps1` ile yüklenir. Ayrıntı: `dersler/01-langflow.md` bölüm 8.
+
+### 19. `Directory path escapes the allowed root.`
+**Neden:** Directory bileşeni yalnızca izinli klasörleri okur. Ayarı JSON listesi (`'["/projedocs"]'`) yazınca LangFlow onu **metin** olarak okudu (`['["/projedocs"]']`).
+**Çözüm:** `LANGFLOW_DIRECTORY_COMPONENT_ALLOWED_ROOTS: /projedocs` (düz yazı). **Teşhis:** ayarın gerçekte okunan değerini container içinde Python ile yazdır.
+
+### 20. `Access to local file paths ... is disabled (LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS=true)`
+**Neden:** Varsayılan olarak akışlar sunucudaki yerel dosyaları okuyamaz.
+**Çözüm (yerel geliştirme):** `LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS: "false"` (Directory yine sadece `/projedocs`'a kısıtlı). **Üretimde `true` bırak**, dokümanları LangFlow'a yükle.
+
+### 21. `SSRF Protection: Hostname litellm resolves to blocked IP address(es)`
+**Neden:** LangFlow, akışların iç ağdaki (özel IP) adreslere istek atmasını engeller (SSRF koruması).
+**Çözüm:** `LANGFLOW_SSRF_ALLOWED_HOSTS: litellm` (sadece bilerek bağlanılan servis).
+
+### 22. `anthropic does not support parameters: ['temperature', 'seed']` (LiteLLM)
+**Neden:** LangFlow'un OpenAI bileşeni Claude'un desteklemediği parametreler gönderir.
+**Çözüm:** `litellm/config.yaml` → `litellm_settings: drop_params: true`, sonra `docker compose restart litellm`.
+
+### 23. LangFlow `403 Invalid or missing API key`
+**Neden (çoğu zaman):** Veritabanı sıfırlandı (bkz. #18), eski API anahtarı artık yok. `.env`'deki `LANGFLOW_API_KEY` geçersiz.
+**Çözüm:** `.env`'de `LANGFLOW_API_KEY=` satırını boşalt, `scripts\langflow-akisi-yukle.ps1` çalıştır (yenisini üretir), sonra `dotnet user-secrets set LangFlow:ApiKey <değer> -p src/Asistan.Api` ve `appsettings.Local.json`'ı güncelle.
+
 ---
 
 ## Olası ama henüz yaşanmamış hatalar
@@ -142,6 +167,8 @@ Değerler `.env` ve user-secrets'taki ile aynıdır. **Bu dosya gizli bilgi içe
 | Fiş `Hata` | 5 deneme de başarısız (model kapalı vb.) | Worker logunda gerçek neden; mesaj `ai-istegi_error` kuyruğunda (panelden incelenebilir) |
 | Worker açılışta `Eksik ayar(lar): RabbitMq:...` | Worker'ın kasası/yedek dosyası boş | #13/#14: Worker API ile **aynı kasayı** kullanır; yoksa `src/Asistan.Worker/appsettings.Local.json` |
 | `PRECONDITION_FAILED` (RabbitMQ) | Aynı adlı kuyruk farklı ayarlarla önceden oluşturulmuş | Kuyruğu panelden sil, uygulamayı yeniden başlat |
+| Doküman modunda `LangFlow:...` eksik ayar hatası | LangFlow adresi/anahtarı kasada yok | #13/#14; `LangFlow:ApiKey` kasada ve `appsettings.Local.json`'da olmalı |
+| Doküman cevabı "yok" diyor ama dokümanda var | Bilgi `docs/` üst klasöründe değil ya da akışın Directory ayarı `types`/`path` yanlış | Akışı LangFlow arayüzünde Playground'da dene; `docs/dersler/` bilerek okunmaz |
 | `Address already in use` (5254) | Önceki `dotnet run` hâlâ çalışıyor | Eski pencereyi kapat veya portu kullanan işlemi bul |
 | `Database ... does not exist` / tablo yok | Migration uygulanmamış | `dotnet ef database update ...` |
 | Migration `Build failed` | Kodda derleme hatası var | Önce `dotnet build` ile düzelt |

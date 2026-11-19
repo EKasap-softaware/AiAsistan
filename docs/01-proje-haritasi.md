@@ -17,7 +17,9 @@ AiAsistan/
 ├─ .config/dotnet-tools.json      Projeye özel araç listesi (dotnet-ef)
 ├─ .github/workflows/ci.yml       GitHub Actions: otomatik build + test
 ├─ litellm/config.yaml            Hangi AI modeli kullanılacak
-├─ docs/                          Bu rehber
+├─ langflow/                      LangFlow akışının tarifi (JSON, Git'te)
+├─ scripts/                       Yardımcı betikler (LangFlow akışını yükleme)
+├─ docs/                          Bu rehber (dersler/ altında ayrıntılı dersler)
 ├─ src/
 │  ├─ Asistan.Domain/             Veri sınıfları
 │  ├─ Asistan.Application/        İş kuralları + arayüzler
@@ -82,6 +84,9 @@ Değişkenler:
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | RabbitMQ kullanıcısı |
 | `LITELLM_MASTER_KEY` | LiteLLM'in "ana anahtarı": API bununla LiteLLM'e girer |
 | `ANTHROPIC_API_KEY` | Claude'a erişim anahtarı (Anthropic konsolundan) |
+| `LANGFLOW_SUPERUSER`, `LANGFLOW_SUPERUSER_PASSWORD` | LangFlow arayüzü/API girişi (girişsiz erişim kapalı) |
+| `LANGFLOW_SECRET_KEY` | LangFlow'un kayıtlı gizli değerleri şifrelediği anahtar. **Değişirse eski şifreli değerler okunamaz** |
+| `LANGFLOW_API_KEY` | .NET programlarının LangFlow akışını çağırdığı anahtar (`scripts/langflow-akisi-yukle.ps1` üretir) |
 
 ### `.gitignore`
 Git'in takip etmeyeceği dosyalar: `bin/`, `obj/`, `.vs/`, `.env`, `coverage/` vb.
@@ -101,6 +106,7 @@ LiteLLM'in beyni. İki "takma ad" tanımlı:
 
 `api_key: os.environ/ANTHROPIC_API_KEY` = "anahtarı ortam değişkeninden oku" (Docker `.env`'den verir). `master_key` ise API'nin LiteLLM'e girişini korur.
 **Model adı değiştirmek istersen sadece bu dosyayı düzenle**, kod değişmez. Sonra: `docker compose restart litellm`.
+`litellm_settings.drop_params: true`: uygulamalar (özellikle LangFlow) OpenAI formatında istek atıp `seed` gibi Claude'un desteklemediği parametreler ekler; bu ayar o parametreleri hata vermek yerine sessizce atar (LiteLLM'in "adaptör" görevi, bkz. `dersler/01-langflow.md` bölüm 5).
 
 ---
 
@@ -186,6 +192,11 @@ Kuyruk dünyasının **sözleşmeleri**, hepsi düz C# (MassTransit'i bilmez):
 ### `Kuyruk/IsServisi.cs`
 API'nin kullandığı iş mantığı. `KuyrugaAlAsync`: kullanıcı ve soru boşsa reddeder; iş numarası ve (yoksa) oturum kimliği üretir; **önce takip fişini yazar, sonra kuyruğa gönderir**; gönderim 5 sn içinde bitmezse ya da hata verirse fişi `Hata` yapıp `KuyrukHatasi` fırlatır (API bunu 503'e çevirir). Neden sınır? RabbitMQ kapalıyken istemci >70 sn asılı kalıyordu ve fiş sonsuza dek `Bekliyor` kalıyordu (gerçekten yaşandı, bkz. `05-sorun-giderme.md` #15). Kalan sınır: fişi yazıp gönderimden önce uygulama ÇÖKERSE fiş `Bekliyor` kalır; gerçek çözümü "transactional outbox" desenidir.
 
+### `Dokuman/DokumanServisi.cs` (Aşama 10)
+- `ILangFlowIstemcisi`: "LangFlow'daki akışı çalıştır" arayüzü (LangFlow'u ve HTTP'yi bilmez).
+- `DokumanServisi.SorAsync`: **doküman modu**. Soruyu, proje dokümanlarını okuyan LangFlow akışına sorar; model cevap verirse soru-cevabı kaydeder (hata olursa hiçbir şey kaydedilmez, hata yutulmaz ki Worker yeniden denesin). Sohbet modundan farkı: hafıza ve özet **kullanılmaz** (her soru dokümanlardan cevaplanır).
+- **Mod:** `SohbetModlari` (`Kuyruk/KuyrukSozlesmeleri.cs`): `sohbet` (varsayılan) ve `dokuman`. `Dogrula` boşu `sohbet` yapar, büyük/küçük harfe bakmaz, bilinmeyen modu `ArgumentException` ile reddeder (API 400 döner). `AiIstegi` mesajı ve `IsKaydi` fişi `Mod` alanını taşır (varsayılan değer sayesinde eski mesajlar `sohbet` sayılır).
+
 ### `Sohbet/IMesajDeposu.cs`
 Arayüz: `KaydetAsync(mesajlar)`, `SonMesajlarAsync(oturumId, adet)` (eskiden yeniye), `SayAsync(oturumId)` (toplam mesaj sayısı) ve `AralikGetirAsync(oturumId, atla, adet)` (eskiden yeniye, ilk `atla` mesajı geçerek). MongoDB'yi bilmez; gerçek hali `MongoMesajDeposu`.
 
@@ -236,15 +247,19 @@ Veritabanının C# karşılığı. `DbSet<Kullanici>` ve `DbSet<Abonelik>` tablo
 - `MassTransitIsYayinci`: `IIsYayinci`'nin gerçek hali. `queue:ai-istegi` adresine **doğrudan kuyruğa gönderir** (Send). Kuyruk yoksa MassTransit onu oluşturur, bu yüzden Worker hiç çalışmamış olsa bile soru kaybolmaz. (Exchange'e `Publish` etseydik, kuyruk/bağ yokken mesaj "not routed" olup sessizce kaybolurdu.)
 - `KuyrukKaydi.AddKuyruk(...)`: API ve Worker aynı RabbitMQ bağlantısını buradan kurar (`RabbitMq:Host/Port/Username/Password`). Worker ek olarak consumer'larını ve kuyruklarını bu metoda verir; API vermez, sadece gönderir. Paket: `MassTransit.RabbitMQ` **8.x** (Apache-2.0, ücretsiz; 9+ ticari).
 
+### `LangFlow/LangFlowIstemcisi.cs` (Aşama 10)
+`ILangFlowIstemcisi`'nin gerçek hali. `POST /api/v1/run/{akış}?stream=false` ile akışı çalıştırır (gövde: `input_value`, `input_type`, `output_type`, `session_id`) ve cevabı `outputs[0].outputs[0].results.message.text` yolundan okur. Yanıt biçimi LangFlow sürümüne göre değişebileceği için yol bulunamazsa ya da metin boşsa sessizce boş dönmez, *"beklenen biçimde değil"* diyen açık bir hata verir. HTTP 5xx → `HttpRequestException` (Worker yeniden dener). Hangi akışın çağrılacağı `LangFlow:Akis` ayarı (`LangFlowAyarlari`).
+
 ### `Llm/LiteLlmIstemcisi.cs`
 `ILlmIstemcisi`'nin gerçek hali. `POST /v1/chat/completions` ile LiteLLM'e konuşur (OpenAI formatı). Cevabın `choices[0].message.content` alanını okur. Hata kodu gelirse `EnsureSuccessStatusCode` ile `HttpRequestException` fırlatır.
 
 ### `DependencyInjection.cs`
-**Tüm kayıtlar tek yerde** (`AddInfrastructure`). Önce `AyarlariDogrula` zorunlu ayarların (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`, `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password`) varlığını kontrol eder; eksikse neyin eksik olduğunu ve nasıl düzeltileceğini yazan açık bir hata verir. Sonra kayıtlar:
+**Tüm kayıtlar tek yerde** (`AddInfrastructure`). Önce `AyarlariDogrula` zorunlu ayarların (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`, `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password`, `LangFlow:BaseUrl`, `LangFlow:ApiKey`) varlığını kontrol eder; eksikse neyin eksik olduğunu ve nasıl düzeltileceğini yazan açık bir hata verir. Sonra kayıtlar:
 - `AddDbContext<AppDbContext>` → Postgres bağlantısı (`ConnectionStrings:Sql`).
 - `AddScoped<IKullaniciDeposu, KullaniciDeposu>`.
 - `AddSingleton<IMongoClient>` (bağlantı havuzu tutar, o yüzden Singleton) + `IMongoDatabase` (veritabanı adı `Mongo:Database`, varsayılan `asistan`) + `AddScoped<IMesajDeposu, MongoMesajDeposu>` + `AddScoped<IHafizaDeposu, MongoHafizaDeposu>` + `AddScoped<IOturumOzetDeposu, MongoOturumOzetDeposu>` + `AddScoped<IIsDeposu, MongoIsDeposu>` + `AddHostedService<MongoIndexServisi>`.
 - `AddHttpClient<ILlmIstemcisi, LiteLlmIstemcisi>` → adres `LiteLlm:BaseUrl`, anahtar `LiteLlm:Key`, zaman aşımı 120 sn.
+- `AddHttpClient<ILangFlowIstemcisi, LangFlowIstemcisi>` → adres `LangFlow:BaseUrl`, `x-api-key` başlığı `LangFlow:ApiKey`, zaman aşımı 120 sn; `LangFlowAyarlari` (akış adı `LangFlow:Akis`, varsayılan `dokuman-asistani`).
 
 Paketler: `Microsoft.EntityFrameworkCore`, `Npgsql.EntityFrameworkCore.PostgreSQL` (Postgres sürücüsü), `Microsoft.Extensions.Http` (`AddHttpClient` için), `MongoDB.Driver` (MongoDB sürücüsü), `Microsoft.Extensions.Hosting.Abstractions` (`IHostedService` için).
 
@@ -264,11 +279,11 @@ Development'ta ayrıca yedek `appsettings.Local.json` okunur.
 Hataları HTTP koduna çevirir: `ArgumentException` → 400, `EmailZatenVarException` → 409.
 
 ### `Controllers/SohbetController.cs`
-- `POST /api/sohbet` → gövde `{ "kullaniciId", "soru", "oturumId"? }`. **API cevabı beklemez**: soruyu kuyruğa bırakır ve **202 Accepted** döner: `{ "isId", "oturumId", "durum": "Bekliyor", "durumUrl": "/api/isler/{isId}" }` (genelde <0.3 sn). Boş soru/kullanıcı → 400. RabbitMQ'ya ulaşılamazsa → **503** (~5 sn içinde).
+- `POST /api/sohbet` → gövde `{ "kullaniciId", "soru", "oturumId"?, "mod"? }`. `mod`: `sohbet` (varsayılan, hafızalı sohbet) veya `dokuman` (proje dokümanlarından cevap, LangFlow akışı); bilinmeyen mod → 400. **API cevabı beklemez**: soruyu kuyruğa bırakır ve **202 Accepted** döner: `{ "isId", "oturumId", "durum": "Bekliyor", "durumUrl": "/api/isler/{isId}" }` (genelde <0.3 sn). Boş soru/kullanıcı → 400. RabbitMQ'ya ulaşılamazsa → **503** (~5 sn içinde).
 - `GET /api/sohbet/{oturumId}/mesajlar?adet=20` → oturumun son mesajları (eskiden yeniye).
 
 ### `Controllers/IslerController.cs`
-`GET /api/isler/{isId}`: "siparişim hazır mı?" ucu. İstemci bunu belirli aralıklarla sorar (polling). Yanıt: `durum` (`Bekliyor`/`Isleniyor`/`Tamamlandi`/`Hata`), `cevap` (Tamamlandi ise dolu), `hata` (Hata ise genel mesaj), `denemeSayisi`, zamanlar. Bilinmeyen iş → 404.
+`GET /api/isler/{isId}`: "siparişim hazır mı?" ucu. İstemci bunu belirli aralıklarla sorar (polling). Yanıt: `mod`, `durum` (`Bekliyor`/`Isleniyor`/`Tamamlandi`/`Hata`), `cevap` (Tamamlandi ise dolu), `hata` (Hata ise genel mesaj), `denemeSayisi`, zamanlar. Bilinmeyen iş → 404.
 
 ### `Controllers/HafizaController.cs`
 Kullanıcının **görme ve silme hakkı** (KVKK/GDPR): asistanın onun hakkında ne hatırladığını görür ve siler.
@@ -300,6 +315,7 @@ Makineye özel kasada duran değerler (API ve Worker **aynı kasayı** paylaşı
 - `ConnectionStrings:Sql` → Postgres bağlantı cümlesi.
 - `Mongo:Url` → MongoDB bağlantı cümlesi (kullanıcı/şifre içerir; `?authSource=admin` sonu önemli, çünkü kullanıcı `admin` veritabanında tanımlı).
 - `RabbitMq:Username`, `RabbitMq:Password` → RabbitMQ kullanıcısı (`.env`'deki `RABBITMQ_USER` / `RABBITMQ_PASSWORD` ile aynı).
+- `LangFlow:ApiKey` → LangFlow API anahtarı (`.env`'deki `LANGFLOW_API_KEY` ile aynı).
 - `LiteLlm:Key` → LiteLLM'e girmek için anahtar (`.env`'deki `LITELLM_MASTER_KEY` ile aynı olmalı).
 
 ---
@@ -343,13 +359,18 @@ Geçerli kayıt; e-posta küçük harfe çevirme; e-posta zaten var; geçersiz g
 Küçük sayılarla (pencere 2, eşik 4) test edilir. **Bağlam:** hafıza/özet yoksa sistem prompt'u sadece temel metindir; varsa hafıza ve özet eklenir; özetlenmiş mesajlar atlanıp ham mesajlar sırayla gelir. **Özetleme:** eşik aşılmadıysa özetlemez; aşıldıysa doğru aralığı (`yeniSinir`) özetleyip kaydeder; önceki özet varsa yeni özet isteğine de girer. **Hafıza çıkarma:** yeni bilgiyi kaydeder; `YOK` / `yok.` / boş çıktıyı kaydetmez (5 girdi); zaten bilineni büyük/küçük harf farkıyla tekrarlamaz; 200 karakterden uzunu kaydetmez; çok satırlı çıktıyı tek satıra çevirir. **Dayanıklılık:** LLM hata verirse `SohbetSonrasiAsync` fırlatmaz; özetleme patlasa bile hafıza çıkarma denenir. **Yönetim:** silme depoya doğru iletilir.
 
 ### `AyarDogrulamaTests.cs` (8 test sayılır)
-`AddInfrastructure`'ın zorunlu ayarları (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`, `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password`) kontrolü: hiç ayar yoksa hepsini listeler; sadece biri eksikse sadece onu listeler; boş/boşluk değeri eksik sayar; hepsi varsa hata vermez; `AddInfrastructure` eksik ayarda servisleri kaydetmeden açık hata verir; hata mesajı sır içermeyen tanı bilgisini (APPDATA, kasa yolu, ayar kaynakları) ve yedek yolu içerir. Gerçek bağlantı kurulmaz (bağlantılar tembeldir).
+`AddInfrastructure`'ın zorunlu ayarları (`ConnectionStrings:Sql`, `Mongo:Url`, `LiteLlm:BaseUrl`, `LiteLlm:Key`, `RabbitMq:Host`, `RabbitMq:Username`, `RabbitMq:Password`, `LangFlow:BaseUrl`, `LangFlow:ApiKey`) kontrolü: hiç ayar yoksa hepsini listeler; sadece biri eksikse sadece onu listeler; boş/boşluk değeri eksik sayar; hepsi varsa hata vermez; `AddInfrastructure` eksik ayarda servisleri kaydetmeden açık hata verir; hata mesajı sır içermeyen tanı bilgisini (APPDATA, kasa yolu, ayar kaynakları) ve yedek yolu içerir. Gerçek bağlantı kurulmaz (bağlantılar tembeldir).
 
-### `IsServisiTests.cs` (10 test sayılır)
+### `IsServisiTests.cs` (12 test sayılır)
 Önce fiş sonra kuyruk sırası ve ikisinin aynı iş numarasını taşıması; oturum id üretimi/korunması ve her işin ayrı numarası; boş kullanıcı/soru (4 girdi) hiçbir yan etki yaratmaz; gönderim hata verirse fiş `Hata` olur ve asıl neden `InnerException`'da kalır; **gönderim asılı kalırsa** (RabbitMQ kapalı senaryosu) 5 sn'de zaman aşımı; istemci vazgeçerse fiş yine kapatılır ve iptal olduğu gibi iletilir.
 
-### `WorkerConsumerTests.cs` (5 test sayılır)
+### `WorkerConsumerTests.cs` (6 test sayılır)
 Consumer'ları **RabbitMQ olmadan** test eder: `ConsumeContext` (gelen mesaj + gönderme yeteneği) sahte. Normal akış (al → sor → tamamla → `sohbet-tamamlandi` kuyruğuna doğru içerikle gönder); **idempotency** (iş zaten işlenmişse hiçbir şey yapma, hata da fırlatma); model hata verirse hata **yutulmaz** (yutulsaydı yeniden deneme olmazdı) ve fiş tamamlanmaz; arka plan consumer'ı hafıza servisini çağırır; hata consumer'ı fişi `Hata` yapar ve iç hata ayrıntısını (örn. bağlantı cümlesi) kullanıcıya **sızdırmaz**.
+
+### `DokumanVeLangFlowTests.cs` (11 test sayılır)
+- **DokumanServisi (5):** başarılı soru-cevap LangFlow cevabıyla dönüp kaydedilir; oturum verilmezse yeni üretilip LangFlow'a aynısı gönderilir; boş soru hiçbir yan etki yaratmaz (2 girdi); LangFlow hata verirse hiçbir şey kaydedilmez ve hata **yutulmaz** (Worker yeniden denesin).
+- **LangFlowIstemcisi (6):** HTTP katmanı sahte (`HttpMessageHandler`), LangFlow'a gitmeden istek şekli sınanır: doğru adres, POST, gövdede `input_value`/`session_id`; HTTP 500 → `HttpRequestException`; **3 farklı bozuk yanıt biçimi** ve **boş metin** → "beklenen biçimde değil"/"boş" diyen açık hata.
+- `IsServisiTests`'e 2 test: mod varsayılanı/küçük harf/fişten kuyruğa taşınma, bilinmeyen mod reddi. `WorkerConsumerTests`'e 1 test: doküman modu `DokumanServisi`'ne gider, `SohbetServisi`'ne gitmez ve hafıza işi sıraya konmaz.
 
 ### `Asistan.Tests.csproj`
 Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **7.\*** (okunaklı doğrulama; 8. sürüm ticari), `coverlet.collector` (kod kapsama), `Microsoft.NET.Test.Sdk`.
@@ -364,6 +385,7 @@ Paketler: `xunit` (test çerçevesi), `Moq` (sahte nesne), `FluentAssertions` **
 | `mongo` | `mongo:8` | 27017 | `mongo_data` | Sohbet geçmişi (kullanılıyor, Aşama 7), ileride hafıza |
 | `rabbitmq` | `rabbitmq:4-management` | 5672 (uygulama), 15672 (panel) | `rabbitmq_data` | Kuyruk (**kullanılıyor**, Aşama 9) |
 | `litellm` | `ghcr.io/berriai/litellm:main-stable` | 4000 | `config.yaml` (salt-okunur) | Claude'a tek kapı |
+| `langflow` | `langflowai/langflow:1.13.3` | 7860 | `langflow_data` (veritabanı), `./docs` → `/projedocs` (salt-okunur) | Doküman asistanı akışı (Aşama 10). Girişsiz erişim kapalı; veritabanı volume'de (`LANGFLOW_SAVE_DB_IN_CONFIG_DIR`); güvenlik ayarları için `dersler/01-langflow.md` bölüm 9 |
 
 Postgres, Mongo ve RabbitMQ'da **healthcheck** var: "başladı" ile "hazır" farklıdır, `docker compose ps` `healthy` gösterir.
 
@@ -378,5 +400,6 @@ Postgres, Mongo ve RabbitMQ'da **healthcheck** var: "başladı" ile "hazır" far
 | `http://localhost:5254/openapi/v1.json` | API'nin makine-okur tarifi |
 | `http://localhost:4000` | LiteLLM |
 | `http://localhost:15672` | RabbitMQ yönetim paneli |
+| `http://localhost:7860` | LangFlow arayüzü (kullanıcı/şifre `.env`'de) |
 | `localhost:5432` | PostgreSQL |
 | `localhost:27017` | MongoDB |

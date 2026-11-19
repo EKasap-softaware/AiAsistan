@@ -11,13 +11,14 @@
 | 1 | Solution iskeleti | ✅ |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | ✅ |
 | 3 | EF Core + `/api/kullanicilar` | ✅ |
-| 4 | Unit testler | ✅ (60 test) |
+| 4 | Unit testler | ✅ (74 test) |
 | 5 | CI (GitHub Actions) | ✅ dosya hazır, Actions sekmesinden doğrulanacak |
 | 6 | LiteLLM + `/api/sohbet` | ✅ Claude cevap veriyor |
 | 7 | MongoDB sohbet geçmişi | ✅ soru-cevap kaydediliyor |
 | 8 | AI Memory (özetleme + kalıcı hafıza) | ✅ asistan konuşmayı ve kullanıcıyı hatırlıyor |
 | 9 | RabbitMQ + Worker (API anında 202, cevabı Worker üretir) | ✅ |
-| 10-11 | LangFlow, CD | ❌ |
+| 10 | LangFlow doküman asistanı (`"mod": "dokuman"`) | ✅ |
+| 11 | CD, Skills, MCP | ❌ |
 
 ## Klasörler
 
@@ -34,6 +35,7 @@
 ```powershell
 Copy-Item .env.example .env      # sonra .env içindeki değerleri doldur
 docker compose up -d             # altyapıyı başlat
+powershell -ExecutionPolicy Bypass -File scripts\langflow-akisi-yukle.ps1   # (bir kez) LangFlow akışını yükle
 dotnet test                      # testleri çalıştır
 dotnet run --project src/Asistan.Api --launch-profile http      # 1. terminal: API
 dotnet run --project src/Asistan.Worker                          # 2. terminal: Worker (soruları o işler!)

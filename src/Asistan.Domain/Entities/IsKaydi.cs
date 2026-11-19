@@ -15,6 +15,7 @@ public class IsKaydi
     public string KullaniciId { get; set; } = null!;
     public string OturumId { get; set; } = null!;
     public string Soru { get; set; } = null!;
+    public string Mod { get; set; } = "sohbet";      // "sohbet" | "dokuman" (bkz. SohbetModlari)
     public IsDurumu Durum { get; set; } = IsDurumu.Bekliyor;
     public string? Cevap { get; set; }
     public string? Hata { get; set; }

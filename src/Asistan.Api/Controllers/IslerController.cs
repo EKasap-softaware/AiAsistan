@@ -20,6 +20,7 @@ public class IslerController(IIsServisi isler) : ControllerBase
             isId = i.Id,
             durum = i.Durum.ToString(),
             oturumId = i.OturumId,
+            mod = i.Mod,
             soru = i.Soru,
             cevap = i.Cevap,
             hata = i.Hata,

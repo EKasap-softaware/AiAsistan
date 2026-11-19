@@ -8,7 +8,8 @@ public class KuyrukHatasi(string mesaj, Exception? ic = null) : Exception(mesaj,
 public interface IIsServisi
 {
     // Soruyu kuyruğa bırakır ve hemen döner (cevap beklemez).
-    Task<IsKaydi> KuyrugaAlAsync(string kullaniciId, string soru, string? oturumId = null, CancellationToken ct = default);
+    // mod: "sohbet" (varsayılan) veya "dokuman". Bilinmeyen mod ArgumentException fırlatır.
+    Task<IsKaydi> KuyrugaAlAsync(string kullaniciId, string soru, string? oturumId = null, string? mod = null, CancellationToken ct = default);
 
     Task<IsKaydi?> GetirAsync(string isId, CancellationToken ct = default);
 }
@@ -18,8 +19,10 @@ public class IsServisi(IIsDeposu isler, IIsYayinci yayinci, TimeSpan? gonderimZa
     // RabbitMQ kapalıyken kuyruk istemcisi çok uzun (bizde >70 sn) bekleyebilir. Kullanıcıyı asılı bırakmayız.
     private readonly TimeSpan _zamanAsimi = gonderimZamanAsimi ?? TimeSpan.FromSeconds(5);
 
-    public async Task<IsKaydi> KuyrugaAlAsync(string kullaniciId, string soru, string? oturumId = null, CancellationToken ct = default)
+    public async Task<IsKaydi> KuyrugaAlAsync(string kullaniciId, string soru, string? oturumId = null, string? mod = null, CancellationToken ct = default)
     {
+        var temizMod = SohbetModlari.Dogrula(mod);   // bilinmeyen mod burada reddedilir, hiçbir şey yazılmaz
+
         if (string.IsNullOrWhiteSpace(kullaniciId))
             throw new ArgumentException("Kullanıcı id boş olamaz.", nameof(kullaniciId));
         if (string.IsNullOrWhiteSpace(soru))
@@ -31,7 +34,8 @@ public class IsServisi(IIsDeposu isler, IIsYayinci yayinci, TimeSpan? gonderimZa
             KullaniciId = kullaniciId,
             // Oturum id'sini burada üretiriz ki kullanıcı daha cevap gelmeden sohbet kimliğini bilsin.
             OturumId = string.IsNullOrWhiteSpace(oturumId) ? Guid.NewGuid().ToString("N") : oturumId,
-            Soru = soru.Trim()
+            Soru = soru.Trim(),
+            Mod = temizMod
         };
 
         // Önce takip fişini yaz, SONRA kuyruğa at. Böylece kullanıcı işi hemen sorgulayabilir ve
@@ -42,7 +46,7 @@ public class IsServisi(IIsDeposu isler, IIsYayinci yayinci, TimeSpan? gonderimZa
         {
             // WaitAsync: gönderim 5 sn içinde bitmezse TimeoutException. (Gönderim arka planda sürse bile
             // sorun değil: fiş "Hata" olacağı için Worker o mesajı alırsa idempotent kapıda atlar.)
-            await yayinci.AiIstegiGonderAsync(new AiIstegi(kayit.Id, kayit.KullaniciId, kayit.OturumId, kayit.Soru), ct)
+            await yayinci.AiIstegiGonderAsync(new AiIstegi(kayit.Id, kayit.KullaniciId, kayit.OturumId, kayit.Soru, kayit.Mod), ct)
                          .WaitAsync(_zamanAsimi, ct);
         }
         catch (Exception ex)

@@ -142,7 +142,7 @@ var cevap = await servis.SorAsync(...);   // beklerken sunucu başka istekleri i
 
 | Tür | Neyi sınar | Hız | Projede |
 |---|---|---|---|
-| Unit | Tek sınıf, bağımlılıklar sahte | ms | 60 test var |
+| Unit | Tek sınıf, bağımlılıklar sahte | ms | 74 test var |
 | Integration | Gerçek DB/HTTP ile birkaç parça | sn | Yok (ileride) |
 | End-to-end | Tüm sistem | dk | Yok |
 
@@ -367,11 +367,22 @@ Neden "yeni 10'u ham bırak"? Son birkaç mesajdaki ayrıntı ("Peki ya Transien
 
 ---
 
-## 16. Henüz yazılmamış ama planda olanlar
+## 16. LangFlow ve doküman modu (Aşama 10)
+
+Ayrıntılı ders: **[dersler/01-langflow.md](dersler/01-langflow.md)**. Özet:
+
+- **LangFlow** görsel akış kurucudur; her akış bir REST adresi olur. Bizde `Chat Input + Directory(/projedocs) → Parser → Prompt → OpenAI (LiteLLM'e bağlı) → Chat Output` akışı **proje dokümanlarını** okuyup soruları SADECE onlara dayanarak cevaplar.
+- **Doküman modu:** `POST /api/sohbet` gövdesine `"mod": "dokuman"` eklenir. Aynı kuyruk ve takip fişi mekanizması kullanılır; Worker `mod`'a bakıp `DokumanServisi` (LangFlow) veya `SohbetServisi` (hafızalı sohbet) çağırır.
+- **LangFlow Claude'u bilmez:** OpenAI bileşeninin adresi LiteLLM'dir; LiteLLM OpenAI formatını Claude'a çevirir (`drop_params`).
+- **Bu gerçek RAG değil, "bağlam doldurma":** tüm dokümanlar her soruda modele gider (~34 bin token). Dokümanlar küçükken işe yarar; büyüyünce embedding + vektör arama gerekir.
+- **Akış Git'te:** `langflow/dokuman-asistani.json`; `scripts/langflow-akisi-yukle.ps1` ile yüklenir. Anahtar akışa gömülmez, global değişken adı (`LITELLM_KEY`) kullanılır.
+
+---
+
+## 17. Henüz yazılmamış ama planda olanlar
 
 | Konu | Neden gerekli | Aşama |
 |---|---|---|
-| **LangFlow** | Karmaşık AI akışlarını (RAG, agent) görsel kurmak | 10 |
 | **CD, Skills, MCP** | Otomatik yayın; Claude'a tekrarlayan işleri öğretmek; Claude'u dış araçlara bağlamak | 11 |
 
 **Hafıza ana fikri:** Neyi, ne kadar göndereceğini yönetmek = bağlam penceresine en faydalı bilgiyi en az token'la sığdırma sanatı (maliyet + kalite).

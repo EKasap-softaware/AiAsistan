@@ -6,7 +6,26 @@ namespace Asistan.Application.Kuyruk;
 // Hem API (gönderen) hem Worker (alan) bu sınıfları kullanır. Düz C# kaydıdır: MassTransit'i bilmez.
 
 // "Bu soruyu modele sor." (API → Worker)
-public record AiIstegi(string IsId, string KullaniciId, string OturumId, string Soru);
+// Mod: "sohbet" (hafızalı normal sohbet) veya "dokuman" (proje dokümanlarını okuyan LangFlow akışı).
+// Varsayılan değer sayesinde eski biçimdeki (Mod'suz) mesajlar da "sohbet" olarak okunur.
+public record AiIstegi(string IsId, string KullaniciId, string OturumId, string Soru, string Mod = SohbetModlari.Sohbet);
+
+// Sorunun nasıl cevaplanacağını seçer.
+public static class SohbetModlari
+{
+    public const string Sohbet = "sohbet";
+    public const string Dokuman = "dokuman";
+
+    // Boş/null → "sohbet". Büyük/küçük harf fark etmez. Bilinmeyen mod → ArgumentException (API bunu 400 yapar).
+    public static string Dogrula(string? mod)
+    {
+        if (string.IsNullOrWhiteSpace(mod)) return Sohbet;
+        var temiz = mod.Trim().ToLowerInvariant();
+        return temiz is Sohbet or Dokuman
+            ? temiz
+            : throw new ArgumentException($"Geçersiz mod '{mod}'. Geçerli modlar: {Sohbet}, {Dokuman}.", nameof(mod));
+    }
+}
 
 // "Cevap verildi, şimdi özetleme ve hafıza çıkarma işini yap." (Worker → Worker, arka plan işi)
 public record SohbetTamamlandi(string KullaniciId, string OturumId, string Soru, string Cevap);

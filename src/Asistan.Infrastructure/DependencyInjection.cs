@@ -1,5 +1,7 @@
 using System.Reflection;
 using Asistan.Application.Bellek;
+using Asistan.Application.Dokuman;
+using Asistan.Infrastructure.LangFlow;
 using Asistan.Application.Kuyruk;
 using Asistan.Application.Kullanicilar;
 using Asistan.Application.Sohbet;
@@ -19,7 +21,8 @@ public static class DependencyInjection
     // neyin eksik olduğunu ve nasıl verileceğini söyleyen açık bir hata veririz.
     public static readonly string[] ZorunluAyarlar =
         ["ConnectionStrings:Sql", "Mongo:Url", "LiteLlm:BaseUrl", "LiteLlm:Key",
-         "RabbitMq:Host", "RabbitMq:Username", "RabbitMq:Password"];
+         "RabbitMq:Host", "RabbitMq:Username", "RabbitMq:Password",
+         "LangFlow:BaseUrl", "LangFlow:ApiKey"];
 
     public static void AyarlariDogrula(IConfiguration config)
     {
@@ -107,6 +110,16 @@ public static class DependencyInjection
         {
             c.BaseAddress = new Uri(config["LiteLlm:BaseUrl"]!);
             c.DefaultRequestHeaders.Authorization = new("Bearer", config["LiteLlm:Key"]);
+            c.Timeout = TimeSpan.FromSeconds(120);
+        });
+
+        // --- LangFlow (doküman modu) ---
+        // Hangi akış çağrılır: LangFlow'da akışa verilen kısa ad (endpoint). x-api-key, LangFlow'un kendi API anahtarı.
+        services.AddSingleton(new LangFlowAyarlari(config["LangFlow:Akis"] ?? "dokuman-asistani"));
+        services.AddHttpClient<ILangFlowIstemcisi, LangFlowIstemcisi>(c =>
+        {
+            c.BaseAddress = new Uri(config["LangFlow:BaseUrl"]!);
+            c.DefaultRequestHeaders.Add("x-api-key", config["LangFlow:ApiKey"]);
             c.Timeout = TimeSpan.FromSeconds(120);
         });
         return services;

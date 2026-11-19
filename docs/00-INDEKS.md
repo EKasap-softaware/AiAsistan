@@ -16,6 +16,7 @@ Hiçbir şeyi ezberlemen gerekmez: takıldığında buraya dön.
 | "Hata aldım, ne yapayım?" | [05-sorun-giderme.md](05-sorun-giderme.md) |
 | "Bu kelime ne demek?" | [06-sozluk.md](06-sozluk.md) |
 | "Bu proje ne işe yarıyor, nereye bağlı? Çizim var mı?" | [07-tasarim-ve-mimari.md](07-tasarim-ve-mimari.md) |
+| "Bir teknolojiyi ayrıntısıyla öğrenmek istiyorum" | [dersler/00-ders-plani.md](dersler/00-ders-plani.md) |
 
 ## Önerilen okuma sırası (ilk kez)
 1. Bu dosyanın altındaki "Büyük resim".
@@ -51,7 +52,7 @@ GET /api/isler/{isId} ─► fişin durumu ve cevap       (kullanıcı cevabı b
 POST /api/kullanicilar ─► KullaniciServisi ─► PostgreSQL
 ```
 
-LangFlow, CD, Skills ve MCP **henüz yok**: Aşama 10-11'de gelecek. (Kuyruk ve Worker Aşama 9'da eklendi.)
+CD, Skills ve MCP **henüz yok**: Aşama 11'de gelecek. (Kuyruk ve Worker Aşama 9'da, LangFlow doküman modu Aşama 10'da eklendi.)
 
 ## Aşama durumu
 
@@ -60,11 +61,11 @@ LangFlow, CD, Skills ve MCP **henüz yok**: Aşama 10-11'de gelecek. (Kuyruk ve 
 | 1 | Solution iskeleti | Bitti |
 | 2 | Docker: Postgres, MongoDB, RabbitMQ | Bitti |
 | 3 | EF Core + `/api/kullanicilar` | Bitti |
-| 4 | Unit testler | Bitti (şu an 60 test) |
+| 4 | Unit testler | Bitti (şu an 74 test) |
 | 5 | CI (GitHub Actions) | Dosya hazır, Actions sekmesinden doğrulanmalı |
 | 6 | LiteLLM + `/api/sohbet` | Bitti (Claude'dan gerçek cevap alındı) |
 | 7 | MongoDB sohbet geçmişi | Bitti (18 test, gerçek MongoDB'de doğrulandı) |
 | 8 | AI Memory | Bitti (kısa + uzun süreli hafıza, gerçek Claude ile doğrulandı) |
 | 9 | RabbitMQ + Worker | Bitti (API 202 döner, Worker işler; Worker/model/RabbitMQ çökme senaryoları gerçek sistemde denendi) |
-| 10 | LangFlow | Yok |
+| 10 | LangFlow (doküman modu) | Bitti (`mod: dokuman`; akış Git'te, yükleme betiği canlı test edildi) |
 | 11 | CD + Skills + MCP | Yok |

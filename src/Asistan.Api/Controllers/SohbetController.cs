@@ -5,7 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Asistan.Api.Controllers;
 
 // OturumId verilmezse yeni sohbet başlar.
-public record SoruDto(string KullaniciId, string Soru, string? OturumId = null);
+// Mod: "sohbet" (varsayılan, hafızalı sohbet) veya "dokuman" (proje dokümanlarından cevap, LangFlow akışı).
+public record SoruDto(string KullaniciId, string Soru, string? OturumId = null, string? Mod = null);
 
 [ApiController]
 [Route("api/sohbet")]
@@ -18,9 +19,9 @@ public class SohbetController(IIsServisi isler, ISohbetServisi sohbet) : Control
     {
         try
         {
-            var is_ = await isler.KuyrugaAlAsync(dto.KullaniciId, dto.Soru, dto.OturumId, ct);
+            var is_ = await isler.KuyrugaAlAsync(dto.KullaniciId, dto.Soru, dto.OturumId, dto.Mod, ct);
             var durumUrl = $"/api/isler/{is_.Id}";
-            return Accepted(durumUrl, new { isId = is_.Id, oturumId = is_.OturumId, durum = is_.Durum.ToString(), durumUrl });
+            return Accepted(durumUrl, new { isId = is_.Id, oturumId = is_.OturumId, mod = is_.Mod, durum = is_.Durum.ToString(), durumUrl });
         }
         catch (ArgumentException ex)
         {

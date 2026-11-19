@@ -1,4 +1,5 @@
 using Asistan.Application.Bellek;
+using Asistan.Application.Dokuman;
 using Asistan.Application.Kuyruk;
 using Asistan.Application.Sohbet;
 using Asistan.Worker.Consumers;
@@ -15,6 +16,7 @@ public class WorkerConsumerTests
     private readonly Mock<IIsDeposu> _isler = new();
     private readonly Mock<ISohbetServisi> _sohbet = new();
     private readonly Mock<IHafizaServisi> _hafiza = new();
+    private readonly Mock<IDokumanServisi> _dokuman = new();
 
     private static readonly AiIstegi Istek = new("i1", "k1", "o1", "DI nedir?");
 
@@ -32,7 +34,7 @@ public class WorkerConsumerTests
     }
 
     private AiIstegiConsumer AiIstegiConsumerKur()
-        => new(_isler.Object, _sohbet.Object, NullLogger<AiIstegiConsumer>.Instance);
+        => new(_isler.Object, _sohbet.Object, _dokuman.Object, NullLogger<AiIstegiConsumer>.Instance);
 
     // ---------------- AiIstegiConsumer ----------------
 
@@ -78,6 +80,23 @@ public class WorkerConsumerTests
         // Hata YUTULMAZ: yutulsaydı MassTransit "başarılı" sanıp mesajı silerdi, yeniden deneme olmazdı.
         await islem.Should().ThrowAsync<HttpRequestException>();
         _isler.Verify(d => d.TamamlaAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        uc.Verify(u => u.Send(It.IsAny<SohbetTamamlandi>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AiIstegi_DokumanModu_DokumanServisineGiderSohbetServisiniVeHafizaIsiniCalistirmaz()
+    {
+        var dokumanIstek = Istek with { Mod = "dokuman" };
+        _isler.Setup(d => d.IslemeAlAsync("i1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _dokuman.Setup(s => s.SorAsync("k1", "DI nedir?", "o1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SohbetSonucu("Dokümandan cevap.", "o1"));
+        var (ctx, uc) = Baglam(dokumanIstek);
+
+        await AiIstegiConsumerKur().Consume(ctx.Object);
+
+        _isler.Verify(d => d.TamamlaAsync("i1", "Dokümandan cevap.", It.IsAny<CancellationToken>()), Times.Once);
+        _sohbet.Verify(s => s.SorAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        // Doküman soruları kullanıcı hakkında kalıcı bilgi taşımaz: özetleme/hafıza işi sıraya KONMAZ.
         uc.Verify(u => u.Send(It.IsAny<SohbetTamamlandi>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

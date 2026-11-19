@@ -1,4 +1,5 @@
 using Asistan.Application.Bellek;
+using Asistan.Application.Dokuman;
 using Asistan.Application.Kullanicilar;
 using Asistan.Application.Kuyruk;
 using Asistan.Application.Sohbet;
@@ -16,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<IKullaniciServisi, KullaniciServisi>();
         services.AddScoped<ISohbetServisi, SohbetServisi>();
         services.AddScoped<IIsServisi, IsServisi>();
+        services.AddScoped<IDokumanServisi, DokumanServisi>();
 
         // Hafıza ayarları appsettings.json > "Hafiza" bölümünden okunur (yoksa varsayılanlar).
         services.AddSingleton(config.GetSection("Hafiza").Get<HafizaAyarlari>() ?? new HafizaAyarlari());

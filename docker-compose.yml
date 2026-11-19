@@ -57,7 +57,37 @@ services:
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
 
+  langflow:
+    image: langflowai/langflow:1.13.3
+    environment:
+      LANGFLOW_AUTO_LOGIN: "false"                 # girişsiz erişim kapalı (rehber: LangFlow'u açık bırakma)
+      LANGFLOW_SUPERUSER: ${LANGFLOW_SUPERUSER}
+      LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD}
+      LANGFLOW_SECRET_KEY: ${LANGFLOW_SECRET_KEY}   # kayıtlı API anahtarlarını şifreler; değişirse eskiler okunamaz
+      LANGFLOW_CONFIG_DIR: /app/langflow
+      # VARSAYILAN olarak LangFlow veritabanını (akışlar, değişkenler, API anahtarları) kütüphane klasörüne yazar ve
+      # container yeniden oluşunca HEPSİ SİLİNİR. Bu ayar veritabanını volume'e (config klasörüne) taşır.
+      LANGFLOW_SAVE_DB_IN_CONFIG_DIR: "true"
+      # Directory bileşeni SADECE buradaki klasörleri okuyabilir (güvenlik: akış sunucunun her yerini okuyamasın)
+      LANGFLOW_DIRECTORY_COMPONENT_ALLOWED_ROOTS: /projedocs   # düz yazı (JSON listesi yazarsan metin olarak okunur)
+      # Varsayılan "true": akışlar sunucudaki yerel dosyaları HİÇ okuyamaz, sadece yüklenen dosyaları okur.
+      # Yerel geliştirmede /projedocs'u okuyabilmek için kapattık; Directory bileşeni zaten yukarıdaki
+      # ALLOWED_ROOTS ile SADECE /projedocs'a kısıtlı. ÜRETİMDE true bırak ve dosyaları LangFlow'a yükle.
+      LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS: "false"
+      # SSRF koruması: LangFlow, akışların iç ağdaki (özel IP) adreslere istek atmasını varsayılan olarak engeller.
+      # Bilerek bağlandığımız TEK iç servisi adıyla izinli yapıyoruz.
+      LANGFLOW_SSRF_ALLOWED_HOSTS: litellm
+      DO_NOT_TRACK: "true"
+    ports:
+      - "7860:7860"
+    volumes:
+      - langflow_data:/app/langflow                # akışlar ve kullanıcılar (SQLite) container silinse de kalır
+      - ./docs:/projedocs:ro                       # akışın okuyacağı proje dokümanları (salt-okunur)
+    depends_on:
+      - litellm
+
 volumes:
   postgres_data:
   mongo_data:
   rabbitmq_data:
+  langflow_data:

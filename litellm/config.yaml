@@ -11,5 +11,10 @@ model_list:
       model: anthropic/claude-haiku-5-5
       api_key: os.environ/ANTHROPIC_API_KEY
 
+litellm_settings:
+  # Uygulamalar (LangFlow gibi) OpenAI formatında istek atar ve "seed" gibi parametreler ekler. Claude bunları
+  # desteklemez. LiteLLM'in adaptör görevi: desteklenmeyen parametreleri hata vermek yerine sessizce atar.
+  drop_params: true
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

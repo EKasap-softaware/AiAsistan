@@ -99,13 +99,39 @@ public class IsServisiTests
                 .Returns(new TaskCompletionSource().Task);
         var servis = new IsServisi(_isler.Object, _yayinci.Object, gonderimZamanAsimi: TimeSpan.FromSeconds(30));
 
-        var islem = () => servis.KuyrugaAlAsync("k1", "soru", null, iptal.Token);
+        var islem = () => servis.KuyrugaAlAsync("k1", "soru", ct: iptal.Token);
         var gorev = islem();
         iptal.Cancel();
 
         await gorev.Invoking(g => g).Should().ThrowAsync<OperationCanceledException>();
         // İptal sırasında ct iptal olmuş olsa da fiş sahipsiz kalmasın diye Hata yazılır (CancellationToken.None ile).
         _isler.Verify(d => d.HataAsync(It.IsAny<string>(), "Kuyruğa atılamadı.", CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task KuyrugaAl_ModVerilmezse_SohbetOlurVerilirseKorunurKucukHarfeCevrilir()
+    {
+        AiIstegi? mesaj = null;
+        _yayinci.Setup(y => y.AiIstegiGonderAsync(It.IsAny<AiIstegi>(), It.IsAny<CancellationToken>()))
+                .Callback<AiIstegi, CancellationToken>((m, _) => mesaj = m).Returns(Task.CompletedTask);
+
+        var varsayilan = await _servis.KuyrugaAlAsync("k1", "soru");
+        var dokuman = await _servis.KuyrugaAlAsync("k1", "soru", mod: "  DOKUMAN ");
+
+        varsayilan.Mod.Should().Be("sohbet");
+        dokuman.Mod.Should().Be("dokuman");
+        mesaj!.Mod.Should().Be("dokuman");               // fişteki mod kuyruğa giden mesaja da taşınır
+    }
+
+    [Fact]
+    public async Task KuyrugaAl_BilinmeyenMod_HataVerirHicbirSeyYapmaz()
+    {
+        var islem = () => _servis.KuyrugaAlAsync("k1", "soru", mod: "hackle");
+
+        var hata = await islem.Should().ThrowAsync<ArgumentException>();
+        hata.Which.Message.Should().Contain("sohbet").And.Contain("dokuman");   // geçerli modları söyler
+        _isler.Verify(d => d.OlusturAsync(It.IsAny<IsKaydi>(), It.IsAny<CancellationToken>()), Times.Never);
+        _yayinci.Verify(y => y.AiIstegiGonderAsync(It.IsAny<AiIstegi>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
