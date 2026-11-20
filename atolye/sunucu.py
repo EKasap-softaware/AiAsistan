@@ -9,6 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")
+import calistir as CAL   # "▶ Çalıştır" düğmesinin güvenli çalıştırıcıları
+CALIS = threading.Lock()
 A = Path(__file__).resolve().parent
 K = A.parent
 WEB = A / "web"
@@ -93,6 +95,8 @@ class Isleyici(BaseHTTPRequestHandler):
         if p == "/api/durum":
             t = tamamlananlar()
             return self._json({"tamam": t, "guncel": guncel(t), "labler": [{"id": i, "ad": a} for i, a in LABLER]})
+        if p == "/api/calistir":
+            return self._json({"destek": CAL.DESTEK, "ornek": CAL.ORNEK_OK})
         if p == "/api/kayit":     # web sayfasının ilerlemesi (tarayıcı verisi silinse de kaybolmasın)
             try:
                 return self._json(json.loads((A / ".web-ilerleme.json").read_text("utf-8")))
@@ -138,6 +142,24 @@ class Isleyici(BaseHTTPRequestHandler):
                 return self._json({"hata": "geçersiz"}, 400)
             (A / ".web-ilerleme.json").write_text(json.dumps(veri, ensure_ascii=False), "utf-8")
             return self._json({"ok": True})
+        mc = re.fullmatch(r"/api/calistir/(\d\d-\d)", self.path.split("?")[0])
+        if mc:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 100_000:
+                return self._json({"hata": "çok büyük"}, 413)
+            try:
+                kod = json.loads(self.rfile.read(n).decode("utf-8")).get("kod", "")
+            except Exception:
+                return self._json({"hata": "geçersiz"}, 400)
+            if not CALIS.acquire(blocking=False):
+                return self._json({"ok": False, "cikti": "Başka bir çalıştırma sürüyor, birkaç saniye bekle."}, 409)
+            try:
+                ok, cikti = CAL.calistir(mc.group(1), kod)
+                return self._json({"ok": ok, "cikti": cikti})
+            except Exception as e:
+                return self._json({"ok": False, "cikti": f"Çalıştırıcı hatası: {e}"})
+            finally:
+                CALIS.release()
         m = re.fullmatch(r"/api/dogrula/(\d\d)", self.path.split("?")[0])
         if not m or m.group(1) not in IDLER:
             return self._json({"hata": "bulunamadı"}, 404)

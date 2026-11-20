@@ -1,0 +1,390 @@
+§CIKTI 02-0
+Gerçek çalıştırma çıktısı (hash'ler ve klasör yolu sende farklı olur):
+```
+$ git init -b main
+Initialized empty Git repository in .../.git/
+$ echo "ilk not" > notlar.txt
+$ git add notlar.txt
+$ git commit -m "feat: notlar eklendi"
+[main (root-commit) 0fe5054] feat: notlar eklendi
+ 1 file changed, 1 insertion(+)
+ create mode 100644 notlar.txt
+```
+`0fe5054` = commit'in kısa kimliği (hash). `root-commit` = bu deponun ilk commit'i.
+
+§CIKTI 02-1
+Gerçek çalıştırma çıktısı:
+```
+$ git switch -c ozellik/selam
+Switched to a new branch 'ozellik/selam'
+$ git switch main
+Switched to branch 'main'
+$ git merge --no-ff ozellik/selam
+Merge made by the 'ort' strategy.
+ selam.txt | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 selam.txt
+$ git log --oneline --graph
+*   9f1b4f0 Merge branch 'ozellik/selam'
+|\
+| * 8a62fb8 feat: selam dosyasi
+|/
+* 0fe5054 feat: notlar eklendi
+```
+Grafikte dalın ayrılıp **merge commit** ile birleştiğini görürsün. `--no-ff` olmasaydı bu "çatal" görünmezdi.
+
+§CIKTI 02-2
+İki dal aynı dosyayı değiştirince gerçekten olan (çıktı):
+```
+$ git merge ozellik/b
+Auto-merging r.txt
+CONFLICT (add/add): Merge conflict in r.txt
+Automatic merge failed; fix conflicts and then commit the result.
+$ cat r.txt
+<<<<<<< HEAD
+renk: AAA
+=======
+renk: BBB
+>>>>>>> ozellik/b
+```
+Git "çakıştı" der ve dosyaya işaretleri koyar. İşaretleri silip metni düzeltirsin, sonra `git add` + `git commit`.
+
+§CIKTI 02-3
+Gerçek çalıştırma çıktısı:
+```
+$ git revert 8a62fb8 --no-edit
+[main c766fb2] Revert "feat: selam dosyasi"
+ 1 file changed, 1 deletion(-)
+ delete mode 100644 selam.txt
+$ git log --oneline
+c766fb2 Revert "feat: selam dosyasi"
+9f1b4f0 Merge branch 'ozellik/selam'
+0fe5054 feat: notlar eklendi
+8a62fb8 feat: selam dosyasi
+```
+Eski commit (`8a62fb8`) **silinmedi**; üstüne tersini yapan yeni commit (`c766fb2`) eklendi. Geçmiş korundu.
+
+§CIKTI 02-4
+Gerçek çalıştırma çıktısı (`.env` dosyası var ama git onu **görmüyor**):
+```
+$ git status --short
+?? .gitignore              <- sadece .gitignore görünüyor, .env yok!
+$ git tag -a v0.1 -m "ilk surum"
+$ git tag
+v0.1
+$ git status --short
+                           <- boş = her şey commit'lendi, .env hâlâ görünmez
+```
+
+§CIKTI 03-0
+Dockerfile'ı derleyince (özet, gerçek çıktı):
+```
+$ docker build -t atolye-lab03 .
+...
+#9 exporting layers 0.1s done
+#9 naming to docker.io/library/atolye-lab03:latest done
+```
+`naming to ... atolye-lab03:latest` = imaj oluştu ve adı `atolye-lab03`.
+
+§CIKTI 03-2
+Gerçek çalıştırma çıktısı:
+```
+$ docker run -d -p 18099:8000 --name deneme atolye-lab03
+e80337d664f6                      <- konteyner kimliği
+$ docker ps --filter name=deneme
+NAMES     STATUS         PORTS
+deneme    Up 2 seconds   0.0.0.0:18099->8000/tcp
+$ docker logs deneme
+Sunucu 8000 portunda basladi
+$ docker exec deneme id -u
+1000                              <- 0 değil: root DEĞİL (güvenli)
+$ curl http://localhost:18099
+Merhaba! MESAJ=yok
+$ docker rm -f deneme
+deneme
+```
+`18099->8000`: dışarıdaki 18099, konteynerin içindeki 8000'e gidiyor. `id -u` = 1000 → `USER uygulama` çalışmış.
+
+§CIKTI 03-3
+`docker compose up -d` sonrası (gerçek çıktı):
+```
+$ docker compose up -d
+ Volume lab03demo_veri Created
+ Container lab03demo-web-1 Started
+$ curl http://localhost:18098
+Merhaba! MESAJ=compose ile calisiyorum     <- environment: MESAJ içeri geçti
+$ docker compose ps
+SERVICE   STATUS         PORTS
+web       Up 2 seconds   0.0.0.0:18098->8000/tcp
+$ docker compose down -v
+ Container lab03demo-web-1 Removed
+ Volume lab03demo_veri Removed          <- -v volume'ü de sildi (veri gider!)
+```
+
+§CIKTI 04-0
+Gerçek mongosh çıktısı (`ObjectId` değerleri sende farklı olur):
+```
+> db.siparisler.insertMany([ ...3 belge... ])
+{
+  acknowledged: true,
+  insertedIds: {
+    '0': ObjectId('6b007e56f7913ba711b388fa'),
+    '1': ObjectId('6b007e56f7913ba711b388fb'),
+    '2': ObjectId('6b007e56f7913ba711b388fc')
+  }
+}
+```
+`acknowledged: true` = yazıldı. Her belgeye Mongo otomatik bir `_id` (ObjectId) verdi.
+
+§CIKTI 04-1
+Gerçek mongosh çıktısı:
+```
+> db.siparisler.find({ tutar: { $gt: 100 }, durum: 'bekliyor' }).sort({ tutar: -1 })
+[
+  { _id: ObjectId('...'), musteri: 'Ali', tutar: 120, durum: 'bekliyor' }
+]
+```
+3 belgeden **sadece Ali** döndü: Ayşe 80 (100'den küçük), Can 300 ama durumu `tamamlandi`. İki koşul birlikte = VE.
+
+§CIKTI 04-2
+Gerçek mongosh çıktısı:
+```
+> db.siparisler.createIndex({ musteri: 1 })
+musteri_1
+> db.siparisler.createIndex({ durum: 1, tutar: -1 })
+durum_1_tutar_-1
+> db.siparisler.getIndexes().map(i => i.name)
+[ '_id_', 'musteri_1', 'durum_1_tutar_-1' ]
+```
+Index adı alan+yön'den üretilir. `_id_` Mongo'nun kendi index'i.
+
+§CIKTI 04-3
+Gerçek mongosh çıktısı:
+```
+> db.siparisler.createIndex({ olusturulma: 1 }, { expireAfterSeconds: 3600 })
+olusturulma_1
+```
+Artık `olusturulma` (Date) alanı 1 saati geçen belgeler otomatik silinir (Mongo dakikada bir temizler).
+
+§CIKTI 04-4
+Gerçek mongosh çıktısı:
+```
+> db.siparisler.aggregate([ { $group: ... }, { $out: 'musteri_toplam' } ])
+(çıktı yok: sonuç musteri_toplam koleksiyonuna yazıldı)
+> db.musteri_toplam.find().sort({ _id: 1 })
+[
+  { _id: 'Ali', toplam: 120 },
+  { _id: 'Ayse', toplam: 80 },
+  { _id: 'Can', toplam: 300 }
+]
+```
+`$group` her müşteriyi tek satıra topladı; `$out` yeni bir koleksiyon oluşturdu.
+
+§CIKTI 04-5
+Gerçek mongosh çıktısı:
+```
+> db.siparisler.updateOne({ musteri: 'Can' }, { $set: { durum: 'tamamlandi', guncellenme: new Date() } })
+{ acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0 }
+> db.siparisler.find({ musteri: 'Can' })
+[ { _id: ObjectId('...'), musteri: 'Can', tutar: 300, durum: 'tamamlandi',
+    guncellenme: ISODate('2026-01-01T00:00:00.000Z') } ]
+```
+`matchedCount: 1` (1 belge bulundu), `modifiedCount: 1` (1 belge değişti). Belgeye yeni `guncellenme` alanı eklendi.
+
+§CIKTI 05-0
+Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+```
+$ rabbitmqadmin declare queue --name atolye.siparis --durable true
+  ✔ tamam
+$ rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-2
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true
+  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
+  9  false    atolye.siparis  1    siparis-1  string
+$ rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false
+  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
+  9  true     atolye.siparis  1    siparis-1  string
+  ↑ yeniden_teslim=true: bu mesaj daha önce verilmiş (ack gelmediği için ya da ölü mektup olarak geri döndü)
+  9  false    atolye.siparis  0    siparis-2  string
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+kuyruk    atolye.siparis             bekleyen: 0  işlenmekte(ack bekliyor): 0
+```
+Bu çıktıda `yeniden_teslim`'e bak: ilk komutta `false`, ikincide `true`. Bakıp geri koyduğun mesaj "bir kez verilmişti" diye işaretlenir. Son satırda `bekleyen: 0`: ikisini de alıp silince kuyruk boşaldı.
+
+§CIKTI 05-1
+Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+```
+$ rabbitmqadmin declare exchange --name atolye.siparisler --type direct
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.kargo --durable true
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.fatura --durable true
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.fatura --routing-key fatura
+  ✔ tamam
+$ rabbitmqadmin publish message --exchange atolye.siparisler --routing-key kargo --payload paket-1
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin publish message --exchange atolye.siparisler --routing-key yok --payload kayip
+  ⚠ yayınlandı AMA hiçbir kuyruğa ulaşmadı → mesaj KAYBOLDU (routing key yanlış ya da bağ/binding yok)
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+exchange  atolye.siparisler          tip: direct
+kuyruk    atolye.fatura              bekleyen: 0  işlenmekte(ack bekliyor): 0
+kuyruk    atolye.kargo               bekleyen: 1  işlenmekte(ack bekliyor): 0
+bağ       atolye.siparisler  --[fatura]-->  atolye.fatura
+bağ       atolye.siparisler  --[kargo]-->  atolye.kargo
+```
+`atolye.kargo`'da `bekleyen: 1`, `atolye.fatura`'da `0`: mesaj yalnızca anahtarı eşleşen kuyruğa gitti. Yanlış anahtarlı mesaj için hata yok, yalnızca `⚠ KAYBOLDU` uyarısı var; gerçek RabbitMQ da böyle sessizdir.
+
+§CIKTI 05-2
+Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+```
+$ rabbitmqadmin declare exchange --name atolye.olaylar --type fanout
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.eposta --durable true
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.istatistik --durable true
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.eposta --routing-key ""
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.istatistik --routing-key ""
+  ✔ tamam
+$ rabbitmqadmin publish message --exchange atolye.olaylar --routing-key "" --payload yeni-uye
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+exchange  atolye.olaylar             tip: fanout
+kuyruk    atolye.eposta              bekleyen: 1  işlenmekte(ack bekliyor): 0
+kuyruk    atolye.istatistik          bekleyen: 1  işlenmekte(ack bekliyor): 0
+bağ       atolye.olaylar  --[]-->  atolye.eposta
+bağ       atolye.olaylar  --[]-->  atolye.istatistik
+```
+Tek mesaj yolladın, iki kuyrukta da `bekleyen: 1`: fanout her bağlı kuyruğa kopya atar. Bağlardaki `[]` boş routing key'dir (fanout bakmaz).
+
+§CIKTI 05-3
+Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+```
+$ rabbitmqadmin declare exchange --name atolye.log --type topic
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.hatalar --durable true
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.tum --durable true
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.log --destination-type queue --destination atolye.hatalar --routing-key '*.hata'
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.log --destination-type queue --destination atolye.tum --routing-key '#'
+  ✔ tamam
+$ rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.hata --payload m1
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.bilgi --payload m2
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin publish message --exchange atolye.log --routing-key stok.hata --payload m3
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+exchange  atolye.log                 tip: topic
+kuyruk    atolye.hatalar             bekleyen: 2  işlenmekte(ack bekliyor): 0
+kuyruk    atolye.tum                 bekleyen: 3  işlenmekte(ack bekliyor): 0
+bağ       atolye.log  --[*.hata]-->  atolye.hatalar
+bağ       atolye.log  --[#]-->  atolye.tum
+```
+`atolye.hatalar`: 2 (`odeme.hata`, `stok.hata`), `atolye.tum`: 3 (hepsi). `odeme.bilgi` yalnızca `#` desenine uydu.
+
+§CIKTI 05-4
+Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+```
+$ rabbitmqadmin declare exchange --name atolye.olu --type fanout
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.olu-kutusu --durable true
+  ✔ tamam
+$ rabbitmqadmin declare binding --source atolye.olu --destination-type queue --destination atolye.olu-kutusu --routing-key ""
+  ✔ tamam
+$ rabbitmqadmin declare queue --name atolye.is --durable true --arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'
+  ✔ tamam
+$ rabbitmqadmin publish message --routing-key atolye.is --payload is-1
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin publish message --routing-key atolye.is --payload is-2
+  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+$ rabbitmqadmin get messages --queue atolye.is --ack-mode reject_requeue_false
+  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
+  4  false    atolye.is  1    is-1  string
+$ sleep 3
+  … 3 sn beklendi
+$ rabbitmqadmin get messages --queue atolye.olu-kutusu --count 5 --ack-mode ack_requeue_true
+  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
+  4  true   atolye.olu  atolye.is  1  headers: {x-death…},  is-1  string
+  ↑ yeniden_teslim=true: bu mesaj daha önce verilmiş (ack gelmediği için ya da ölü mektup olarak geri döndü)
+  ↑ ölü mektup! RabbitMQ başlığa neden yazdı: reason=rejected  (rejected = reddedildi, expired = süresi doldu, maxlen = kuyruk doldu)
+  4  false  atolye.olu  atolye.is  0  headers: {x-death…},     is-2  string
+  ↑ ölü mektup! RabbitMQ başlığa neden yazdı: reason=expired  (rejected = reddedildi, expired = süresi doldu, maxlen = kuyruk doldu)
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+exchange  atolye.olu                 tip: fanout
+kuyruk    atolye.is                  bekleyen: 0  işlenmekte(ack bekliyor): 0   [x-dead-letter-exchange=atolye.olu, x-message-ttl=2000]
+kuyruk    atolye.olu-kutusu          bekleyen: 2  işlenmekte(ack bekliyor): 0
+bağ       atolye.olu  --[]-->  atolye.olu-kutusu
+```
+İki mesaj da ölü mektup kutusunda. RabbitMQ başlığa nedenini yazdı: birini sen reddettin (`rejected`), diğerinin süresi doldu (`expired`). `x-death` başlığı gerçek uygulamada "bu mesaj neden buraya düştü?" sorusunun cevabıdır.
+
+§CIKTI 05-5
+Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+```
+[hazır] 3 mesaj kuyrukta bekliyor; senin consumer'ın başlıyor...
+Alındı: siparis-1
+Alındı: siparis-2
+Alındı: siparis-3
+[sonuç] Kuyrukta bekleyen mesaj: 0  → hiç mesaj kalmadı (hepsi ack'lendi ya da reddedildi) ✔
+```
+Üç mesaj sırayla işlendi, `ack` verildiği için kuyrukta bekleyen kalmadı. Ack satırını silip tekrar çalıştırırsan son satır `3` olur: mesajlar geri döner.
+
+§CIKTI 06-0
+LiteLLM'in gerçekten yüklediği takma adlar (gerçek çıktı):
+```
+GET /v1/models -> 200
+['akilli', 'hizli']
+```
+Kodda gerçek model adı yerine bu takma adları kullanırsın.
+
+§CIKTI 06-2
+Gerçek LiteLLM yanıtı:
+```
+POST /v1/chat/completions (model=hizli) -> 200
+cevap : Tamam, ne yazmamı istersin? Bir konu, metin türü (e-posta, şiir, hikâye, rapor vb.)
+        veya uzunluk tercihi söylersen hemen başlayabilirim.
+usage : 14 giriş + 148 çıkış token
+Anahtarsız istek -> 401
+```
+- `usage` = fatura: 14 token girdi, 148 token çıktı.
+- **`401`** = Authorization başlığı yoksa kapı kapalı.
+- Dikkat: `max_tokens: 30` ile denediğimde cevap **boş (None)** geldi: model, sınır dolunca yarıda kesildi. Çok küçük `max_tokens` cevabı boğar.
+
+§CIKTI 07-0
+Gerçek C# çıktısı:
+```
+SonN([a,b,c,d], 2)  -> ["c", "d"]
+SonN([a,b,c,d], 9)  -> ["a", "b", "c", "d"]    (n büyükse hepsi)
+SonN([a,b,c,d], 0)  -> []
+SonN([a,b,c,d], -3) -> []                      (n <= 0 → boş)
+```
+
+§CIKTI 07-1
+Gerçek C# çıktısı:
+```
+OzetGerekliMi(19, 20) -> False
+OzetGerekliMi(20, 20) -> True     <- tam eşikte true (>=)
+OzetGerekliMi(21, 20) -> True
+```
+
+§CIKTI 07-2
+Gerçek C# çıktısı (9 aday verildi):
+```
+adaylar: "Kahve sever", "  kahve SEVER ", "YOK", "yok", "", "   ",
+         "Ad: Emre\nYas: 30", (201 karakterlik metin), "Vegan"
+HafizaFiltrele(9 aday) -> ["Kahve sever", "Vegan"]
+```
+Elenenler: tekrar (`kahve SEVER`), `YOK`/`yok`, boşlar, çok satırlı, 200 karakterden uzun. Geriye sadece 2 temiz kayıt kaldı.

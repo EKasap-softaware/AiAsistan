@@ -64,3 +64,10 @@ cd AiAsistan
 - Lab 09 sadece YAML'ın doğruluğunu denetler; gerçek çalıştırma için GitHub'a push gerekir.
 - Lab 08'in kontrolü dışa aktarılan JSON üzerinedir (akışı çalıştırmayı denetlemez).
 - Lab 06 G5 gerçek bir (çok ucuz, ~0.00001 $) Claude isteği atar.
+
+## Sayfadaki düğmeler
+- **Kontrol et**: cevabını kurallara göre denetler, adımı geçirir.
+- **▶ Çalıştır**: yazdığın kodu gerçekten çalıştırıp çıktısını gösterir (MongoDB, Git, Docker, RabbitMQ, LiteLLM, C# ve YAML/JSON sözdizimi). Kum kutusunda çalışır, gerçek verine dokunmaz. Kodlar `atolye/calistir.py` içinde.
+- **⌨ Yazarak çalış**: çözümü aynen yazdırır; doğru harf yeşil, hata kırmızı, Enter'da girinti otomatik.
+- **▶ Bu örneği çalıştır**: Seviye 5'te (RabbitMQ) her "Örnek" ve "Başka örnekler" kutusunun altında; örneği kopyalamadan gerçek RabbitMQ'da çalıştırır (`rabbitmqadmin` + C# `RabbitMQ.Client`).
+- **🧩 Nasıl yazılır?** / **📚 Başka örnekler** / **▶ Çalıştırınca ne görürsün?**: yazmadan önce bak.

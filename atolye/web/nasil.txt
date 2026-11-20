@@ -143,43 +143,138 @@ db.siparisler.updateOne({ musteri: 'Can' }, { $set: { durum: 'tamamlandi', gunce
 `$set` yazmazsan Mongo tüm belgeyi değiştirmeye çalışır → hata.
 
 §NASIL 05-0
-**Hedef:** kalıcı kuyruk + ölü mektup exchange'i (JSON).
+**Hedef:** 1 kuyruk aç → 2 mesaj bırak → bakıp geri koy → alıp sil.
 
-JSON kuralları: anahtarlar **çift tırnaklı**, satırlar virgülle ayrılır, son elemandan sonra virgül **yok**.
-
-1. Dış süslü parantez: `{ }`
-2. İlk özellik: `"durable": true,`  (true tırnaksız!)
-3. İkinci özellik iç içe bir nesne: `"arguments": { ... }`
-4. İçinde: `"x-dead-letter-exchange": "atolye.olu"`
-```json
-{
-  "durable": true,
-  "arguments": {
-    "x-dead-letter-exchange": "atolye.olu"
-  }
-}
-```
-Kontrol: `{` sayısı = `}` sayısı mı? Son satırdan sonra virgül yok mu?
-
-§NASIL 05-1
-**Hedef:** curl ile mesaj yayınla. Komutu **parçalara böl**:
+Her komutun kalıbı aynı: `rabbitmqadmin <fiil> <nesne> --seçenek değer`
 
 | Parça | Anlamı |
 |---|---|
-| `curl` | istek at |
-| `-u kullanici:parola` | giriş bilgisi (kullanıcı:parola) |
-| `-X POST` | POST yöntemi |
-| `http://localhost:15672/api/exchanges/%2F/amq.default/publish` | adres (`%2F` = `/` sanal sunucusu) |
-| `-H "Content-Type: application/json"` | "gövde JSON" başlığı |
-| `-d '{...}'` | gönderilen JSON (tek tırnak dışta, çift tırnak içte) |
+| `rabbitmqadmin` | RabbitMQ'nun komut satırı aracı |
+| `declare queue` | "kuyruk oluştur" (fiil + nesne) |
+| `--name atolye.siparis` | kuyruğun adı |
+| `--durable true` | RabbitMQ yeniden başlasa da kuyruk kalsın |
 
-JSON içi: `{"properties":{},"routing_key":"atolye.kuyruk","payload":"selam","payload_encoding":"string"}`
-```bash
-curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"atolye.kuyruk","payload":"selam","payload_encoding":"string"}'
+**Satır satır yaz:**
+1. Hazır satır: `rabbitmqadmin declare queue --name atolye.siparis --durable true`
+2. Mesaj bırak (iki ayrı satır, yalnızca `--payload` değişir):
+   `rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1`
+   - `--routing-key` = kuyruğun adı (exchange yazmadığın için varsayılan exchange kuyruğu adından bulur).
+3. Bak ama silme: `rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true`
+4. Al ve sil: `rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false`
+   - `--count 2` = en fazla 2 mesaj getir.
+
 ```
-Hepsi **tek satır**. `routing_key` kuyruk adıyla aynı olmalı yoksa mesaj kaybolur.
+rabbitmqadmin declare queue --name atolye.siparis --durable true
+rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1
+rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-2
+rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true
+rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false
+```
+**Sonucu oku:** ▶ Çalıştır'a basınca üçüncü komuttan sonra `yeniden_teslim false`, dördüncüden sonra `true` göreceksin: bakıp geri koyduğun mesaj "bir kez verilmişti" diye işaretlenir.
+
+§NASIL 05-1
+**Hedef:** exchange + iki kuyruk + iki bağ + iki mesaj (biri doğru, biri yanlış anahtar).
+
+Sırayı ezberle: **önce exchange, sonra kuyruklar, sonra bağlar, en son mesaj.** Bağ kurmadan mesaj yollarsan mesaj kaybolur.
+
+| Komut | Ne yapar |
+|---|---|
+| `declare exchange --name X --type direct` | postacıyı oluştur (`direct` = anahtar birebir eşleşsin) |
+| `declare queue --name K --durable true` | kutuyu oluştur |
+| `declare binding ...` | kuralı yaz (aşağıda) |
+| `publish message --exchange X --routing-key A --payload P` | mesajı postacıya ver |
+
+**Bağ komutunun 4 parçası** (en çok yanlış yazılan satır):
+- `--source atolye.siparisler` → hangi exchange'den geliyor
+- `--destination-type queue` → hedef bir kuyruk
+- `--destination atolye.kargo` → hangi kuyruğa gidecek
+- `--routing-key kargo` → hangi anahtarla gelen mesaj
+
+```
+rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
+```
+Fatura için aynı satırı kopyala; `atolye.kargo` ve `kargo` yerine `atolye.fatura` ve `fatura` yaz.
+
+**Sonucu oku:** `atolye.kargo` kuyruğunda `bekleyen: 1`, `atolye.fatura`'da `0` olmalı. Yanlış anahtarlı mesaj için `⚠ KAYBOLDU` uyarısı çıkar; hata mesajı gelmez, RabbitMQ'nun sessiz davranışı budur.
 
 §NASIL 05-2
+**Hedef:** bir mesaj, iki kuyruğa kopya.
+
+1. `declare exchange --name atolye.olaylar --type fanout` (hazır)
+2. İki kuyruk: `declare queue --name atolye.eposta --durable true` ve aynısı `atolye.istatistik` için.
+3. İki bağ. 05-1'deki bağ satırının aynısı, ama anahtar boş:
+   `rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.eposta --routing-key ""`
+   - fanout anahtara bakmaz ama `--routing-key` seçeneği **zorunlu**; bu yüzden boş tırnak: `""`.
+4. **Tek** mesaj: `rabbitmqadmin publish message --exchange atolye.olaylar --routing-key "" --payload yeni-uye`
+
+```
+rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.istatistik --routing-key ""
+```
+**Sonucu oku:** iki kuyrukta da `bekleyen: 1`. Tek mesaj yolladın, iki kopya oluştu: fanout'un işi bu.
+
+§NASIL 05-3
+**Hedef:** `*.hata` yalnızca hataları, `#` her şeyi toplasın.
+
+| Desen | Neyle eşleşir | Eşleşmez |
+|---|---|---|
+| `*.hata` | `odeme.hata`, `stok.hata` | `odeme.bilgi`, `a.b.hata` |
+| `odeme.*` | `odeme.hata`, `odeme.bilgi` | `stok.hata` |
+| `#` | her şey | (yok) |
+
+- `*` = tam 1 kelime, `#` = 0 veya daha çok kelime. Kelimeler noktayla ayrılır.
+- Deseni **tek tırnak** içine yaz: `--routing-key '*.hata'`
+
+Adımlar:
+1. Hazır satır: exchange (`--type topic`).
+2. İki kuyruk: `atolye.hatalar`, `atolye.tum`.
+3. İki bağ: hatalar için `'*.hata'`, tum için `'#'`.
+4. Üç mesaj (anahtar sırasıyla): `odeme.hata` → m1, `odeme.bilgi` → m2, `stok.hata` → m3.
+
+```
+rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.hata --payload m1
+```
+**Sonucu oku:** hatalar = 2 (m1, m3), tum = 3. Hesabı kendin yap: `odeme.bilgi` `*.hata`'ya uymaz, ama `#` her şeye uyar.
+
+§NASIL 05-4
+**Hedef:** ölü mektup kutusu kur, bir mesajı reddet, birinin süresi dolsun.
+
+Sıra: **önce ölü mektup tarafı, sonra asıl kuyruk** (asıl kuyruk, var olan bir exchange'i gösteriyor).
+1. Hazır: `declare exchange --name atolye.olu --type fanout`
+2. Kutu + bağ: `declare queue --name atolye.olu-kutusu --durable true`, sonra `declare binding --source atolye.olu --destination-type queue --destination atolye.olu-kutusu --routing-key ""`
+3. Asıl kuyruk, argümanı **tek tırnak** içine alarak:
+   `rabbitmqadmin declare queue --name atolye.is --durable true --arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'`
+   - JSON'da anahtarlar çift tırnaklı, `2000` tırnaksız (sayı, milisaniye).
+4. İki mesaj yolla: `is-1`, `is-2` (anahtar = `atolye.is`).
+5. Reddet: `rabbitmqadmin get messages --queue atolye.is --ack-mode reject_requeue_false` → kuyruk sıralı olduğu için **ilk** mesaj (`is-1`) reddedilir.
+6. `sleep 3` satırı: kalan `is-2` 2 saniyede dolar.
+7. Kutuya bak: `rabbitmqadmin get messages --queue atolye.olu-kutusu --count 5 --ack-mode ack_requeue_true`
+
+**Sonucu oku:** iki mesaj da kutuda; birinin sebebi `rejected`, diğerinin `expired`.
+
+§NASIL 05-5
+**Hedef:** 5 satırlık consumer. `ch` ve `kuyruk` hazır geliyor.
+
+1. Consumer nesnesi: `var tuketici = new AsyncEventingBasicConsumer(ch);` → "bu kanalda mesaj dinleyecek nesne".
+2. Mesaj gelince çalışacak kod: `tuketici.ReceivedAsync += async (_, ea) => { ... };`
+   - `+=` "bu olaya şu kodu ekle" demek. `_` kullanmadığın ilk parametre, `ea` mesajın kendisi.
+3. Süslü parantez içinde 3 iş:
+   - gövdeyi metne çevir: `var metin = Encoding.UTF8.GetString(ea.Body.ToArray());` (mesaj byte dizisi olarak gelir)
+   - yazdır: `Console.WriteLine($"Alındı: {metin}");`
+   - **ack**: `await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);` (`DeliveryTag` = mesajın numarası)
+4. Dinlemeyi başlat: `await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);`
+```csharp
+var tuketici = new AsyncEventingBasicConsumer(ch);
+tuketici.ReceivedAsync += async (_, ea) =>
+{
+    var metin = Encoding.UTF8.GetString(ea.Body.ToArray());
+    Console.WriteLine($"Alındı: {metin}");
+    await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
+};
+await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);
+```
+Deney: ack satırını sil, ▶ Çalıştır'a bas; mesajların kuyruğa geri döndüğünü göreceksin. Sonra geri ekle.
+
+§NASIL 05-6
 **Hedef:** consumer sınıfı.
 
 1. Başlık: `public class AiIstegiConsumer : IConsumer<AiIstegi>` — "AiIstegi mesajını tüketen sınıf".
@@ -198,9 +293,9 @@ public class AiIstegiConsumer(ILogger<AiIstegiConsumer> log) : IConsumer<AiIsteg
     }
 }
 ```
-`async` kullandın → içinde en az bir `await` olsun (`await Task.CompletedTask;`).
+`async` kullandın → içinde en az bir `await` olsun (`await Task.CompletedTask;`). Önceki adımla karşılaştır: orada ack'i **sen** verdin, burada metot hatasız bitince MassTransit verir.
 
-§NASIL 05-3
+§NASIL 05-7
 **Hedef:** üstel retry.
 
 Kalıp: `e.UseMessageRetry(r => r.Exponential(DENEME, MIN, MAX, ARTIŞ));`
@@ -214,11 +309,6 @@ Dört sayıyı sırayla doldur:
 e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(5)));
 ```
 Bu satırı `// retry ayarını buraya yaz` yerine, `ConfigureConsumer` satırının **üstüne** koy.
-
-§NASIL 05-4
-Tek kelime. **Fan** = yelpaze: bir mesajı bağlı tüm kuyruklara yayar. İngilizce adı: `fanout`.
-
-Cevap: `tip: fanout` (diğer tip adlarını açıklamada bile yazma).
 
 §NASIL 06-0
 **Hedef:** `atolye` takma adı.

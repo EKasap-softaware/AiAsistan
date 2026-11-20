@@ -1,54 +1,301 @@
-§LAB 05 | RabbitMQ | Kuyruk tanımla, mesaj yayınla, consumer yaz, yeniden deneme (retry) ve dead-letter kur.
+§LAB 05 | RabbitMQ | Gerçek RabbitMQ'da kuyruk aç, mesaj yolla/oku, exchange ile yönlendir, ölü mektup kur, C# ile consumer yaz.
 
-§ADIM Dead-letter'lı kuyruk tanımı (JSON) | json
+§ADIM Kuyruk aç, mesaj bırak, mesajı oku | sh
 §ANLAT
-Mesaj akışı: **producer → exchange → (binding) → kuyruk → consumer**. İşlenemeyen mesaj çöpe gitmesin diye kuyruğa **dead-letter exchange** (DLX) tanımlanır: reddedilen/süresi dolan mesaj oraya aktarılır. Yönetim API'sinde kuyruk `PUT /api/queues/%2F/KUYRUK_ADI` ile, gövdede JSON tanımla oluşturulur (`%2F` varsayılan sanal sunucu `/` demektir).
+**RabbitMQ ne işe yarar?** İki program birbirini beklemeden konuşsun diye araya bir **posta kutusu** koyar:
+```
+Producer ──► [ Exchange ] ──► [ Kuyruk ] ──► Consumer
+(gönderen)    (dağıtıcı)      (bekleme sırası)  (işleyen)
+```
+Gerçek hayat: web sitesi "yeni sipariş var" mesajını kutuya bırakır ve işine bakar. Kargo servisi **kendi hızında** alıp işler. Kargo servisi kapalıysa mesaj **kuyrukta bekler**, kaybolmaz.
+
+**Nasıl yönetilir?** RabbitMQ'nun resmi komut satırı aracı `rabbitmqadmin` ile. Sayfadaki **▶ Çalıştır** gerçek RabbitMQ'na bağlanır ve komutları sırayla çalıştırır. Güvenlik için adlar `atolye.` ile başlar (senin gerçek kuyruklarına dokunulmaz) ve her çalıştırmada her şey silinip sıfırdan başlar.
+
+Bu adımda 3 komut öğreniyorsun:
+- `declare queue --name ... --durable true` → kuyruk aç. **durable** = RabbitMQ yeniden başlasa da kuyruk kalsın.
+- `publish message --routing-key KUYRUK --payload "mesaj"` → mesaj bırak. Exchange yazmazsan **varsayılan exchange** devrede: mesaj, adı `--routing-key` ile aynı olan kuyruğa gider.
+- `get messages --queue ... --ack-mode ...` → mesajı al. `ack_requeue_true` = **bak ve geri koy** (kuyrukta kalır). `ack_requeue_false` = **al ve sil** ("işledim" onayı = **ack**).
+
+Ack neden önemli? Consumer mesajı alıp çökerse ack gitmediği için RabbitMQ mesajı **geri koyar**; iş kaybolmaz.
 §ORNEK
-{
-  "durable": true,
-  "arguments": {
-    "x-dead-letter-exchange": "ornek.olu"
-  }
-}
+rabbitmqadmin declare queue --name atolye.demo --durable true
+rabbitmqadmin publish message --routing-key atolye.demo --payload "ilk mesaj"
+rabbitmqadmin get messages --queue atolye.demo --ack-mode ack_requeue_true
 §GOREV
-`atolye.kuyruk` kuyruğunu oluşturan gövdeyi yaz: kalıcı (durable) olsun ve ölü mektuplar `atolye.olu` exchange'ine gitsin. Geçerli JSON olmalı.
+`atolye.siparis` adlı **kalıcı** kuyruğu aç. Kuyruğa `siparis-1` ve `siparis-2` mesajlarını bırak (routing key = kuyruk adı). Sonra önce `ack_requeue_true` ile **1 mesaja bak** (kuyrukta kalsın), sonra `--count 2` ve `ack_requeue_false` ile **ikisini de al** (silinsin). Her satır `rabbitmqadmin` ile başlar.
 §BASLANGIC
-{
+# 1) kalıcı kuyruğu aç
+rabbitmqadmin declare queue --name atolye.siparis --durable true
 
-}
-§K Geçerli JSON ⟫ @json ⟫ süslü parantez, tırnaklı anahtarlar, virgüllere dikkat
-§K "durable": true ⟫ /"durable"\s*:\s*true/ ⟫ kuyruk yeniden başlatmada kaybolmasın: "durable": true
-§K arguments bölümü ⟫ /"arguments"\s*:\s*\{/ ⟫ "arguments": { ... }
-§K x-dead-letter-exchange = atolye.olu ⟫ /"x-dead-letter-exchange"\s*:\s*"atolye\.olu"/ ⟫ "x-dead-letter-exchange": "atolye.olu"
+# 2) siparis-1 ve siparis-2 mesajlarını bırak (iki ayrı satır)
+
+# 3) 1 mesaja bak ama silme (ack_requeue_true)
+
+# 4) ikisini de al ve sil (--count 2, ack_requeue_false)
+
+§K Kalıcı kuyruk açıldı ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.siparis\b)(?=[^\n]*--durable\s+true)/ ⟫ declare queue --name atolye.siparis --durable true
+§K siparis-1 yayınlandı ⟫ /publish\s+message(?=[^\n]*(?:--routing-key|-k)\s+atolye\.siparis\b)(?=[^\n]*(?:--payload|-m)\s+["']?siparis-1)/ ⟫ publish message --routing-key atolye.siparis --payload siparis-1
+§K siparis-2 yayınlandı ⟫ /publish\s+message(?=[^\n]*(?:--routing-key|-k)\s+atolye\.siparis\b)(?=[^\n]*(?:--payload|-m)\s+["']?siparis-2)/ ⟫ publish message --routing-key atolye.siparis --payload siparis-2
+§K Bakıp geri koydun ⟫ /get\s+messages(?=[^\n]*(?:--queue|-q)\s+atolye\.siparis\b)(?=[^\n]*ack_requeue_true)/ ⟫ get messages --queue atolye.siparis --ack-mode ack_requeue_true
+§K İkisini alıp sildin ⟫ /get\s+messages(?=[^\n]*(?:--queue|-q)\s+atolye\.siparis\b)(?=[^\n]*(?:--count|-c)\s+2\b)(?=[^\n]*ack_requeue_false)/ ⟫ get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false
 §COZUM
-{
-  "durable": true,
-  "arguments": {
-    "x-dead-letter-exchange": "atolye.olu"
-  }
-}
+rabbitmqadmin declare queue --name atolye.siparis --durable true
+rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1
+rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-2
+rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true
+rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false
 
-§ADIM Mesaj yayınla (curl ile API) | sh
+§ADIM Exchange + binding: mesaj doğru kuyruğa gitsin (direct) | sh
 §ANLAT
-`amq.default` **varsayılan exchange**'dir: her kuyruğa kendi adıyla bağlıdır, yani routing key = kuyruk adı olunca mesaj o kuyruğa gider. Yanlış routing key yazarsan mesaj **sessizce kaybolur** ("published, but not routed").
+Tek kuyrukla yetinmezsin: siparişin **kargosu** ayrı, **faturası** ayrı serviste işlenir. Mesajı sen kuyruğa değil **exchange**'e bırakırsın; exchange onu kurala göre dağıtır:
+```
+                        ┌─ binding: "kargo"  ──► [atolye.kargo]
+paket-1 ─► [exchange] ──┤
+(anahtar: kargo)        └─ binding: "fatura" ──► [atolye.fatura]
+```
+- **exchange** = postacı (`declare exchange --type direct`).
+- **binding** = kural: "şu anahtarla gelen mesaj şu kuyruğa" (`declare binding`).
+- **routing key** = mesajın üstündeki adres etiketi.
+- **direct** tipinde anahtar **birebir** eşleşmeli.
+
+**Altın tuzak:** anahtar yanlışsa ya da bağ yoksa mesaj **sessizce kaybolur**. Hata fırlatmaz; yalnızca `publish` çıktısında "NOT routed" yazar. Bu atölyede çıktıda **⚠ KAYBOLDU** olarak göreceksin.
 §ORNEK
-curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"ornek.kuyruk","payload":"merhaba","payload_encoding":"string"}'
+rabbitmqadmin declare exchange --name atolye.demo-ex --type direct
+rabbitmqadmin declare queue --name atolye.demo-kargo --durable true
+rabbitmqadmin declare binding --source atolye.demo-ex --destination-type queue --destination atolye.demo-kargo --routing-key kargo
+rabbitmqadmin publish message --exchange atolye.demo-ex --routing-key kargo --payload paket-1
+rabbitmqadmin publish message --exchange atolye.demo-ex --routing-key yanlis --payload kayip
 §GOREV
-Yönetim API'sine (`localhost:15672`) `atolye.kuyruk` kuyruğuna `selam` içeriğiyle bir mesaj yayınlayan `curl` komutunu yaz (`amq.default` exchange'i, kullanıcı `kullanici:parola`).
+`atolye.siparisler` adında **direct** bir exchange aç. İki kalıcı kuyruk aç: `atolye.kargo` ve `atolye.fatura`. İki bağ kur: anahtar `kargo` → `atolye.kargo`, anahtar `fatura` → `atolye.fatura`. Exchange'e `kargo` anahtarıyla `paket-1` mesajını yolla. Sonra **bilerek yanlış** bir anahtarla (`yok`) bir mesaj daha yolla ve çıktıda kaybolduğunu gör.
 §BASLANGIC
-# komutu buraya yaz
-§K curl ve kimlik bilgisi (-u) ⟫ /curl\s+[^\n]*-u\s+\S+/ ⟫ curl -u kullanici:parola ...
-§K POST yöntemi ⟫ /-X\s+POST|--request\s+POST/ ⟫ -X POST
-§K amq.default/publish adresi ⟫ /localhost:15672\/api\/exchanges\/%2F\/amq\.default\/publish/ ⟫ http://localhost:15672/api/exchanges/%2F/amq.default/publish
-§K routing_key = atolye.kuyruk ⟫ /"routing_key"\s*:\s*"atolye\.kuyruk"/ ⟫ "routing_key":"atolye.kuyruk"
-§K payload selam ⟫ /"payload"\s*:\s*"selam"/ ⟫ "payload":"selam"
-§K payload_encoding string ⟫ /"payload_encoding"\s*:\s*"string"/ ⟫ "payload_encoding":"string"
-§COZUM
-curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"atolye.kuyruk","payload":"selam","payload_encoding":"string"}'
+# exchange
+rabbitmqadmin declare exchange --name atolye.siparisler --type direct
 
-§ADIM Consumer yaz (MassTransit) | cs
+# iki kuyruk (kalıcı)
+
+# iki bağ (binding): kargo -> atolye.kargo, fatura -> atolye.fatura
+
+# paket-1 mesajı, anahtar: kargo
+
+# bilerek yanlış anahtar: yok
+
+§K direct exchange ⟫ /declare\s+exchange(?=[^\n]*--name\s+atolye\.siparisler\b)(?=[^\n]*--type\s+direct)/ ⟫ declare exchange --name atolye.siparisler --type direct
+§K atolye.kargo kuyruğu ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.kargo\b)/ ⟫ declare queue --name atolye.kargo --durable true
+§K atolye.fatura kuyruğu ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.fatura\b)/ ⟫ declare queue --name atolye.fatura --durable true
+§K kargo bağı ⟫ /declare\s+binding(?=[^\n]*--source\s+atolye\.siparisler\b)(?=[^\n]*--destination\s+atolye\.kargo\b)(?=[^\n]*--routing-key\s+kargo\b)(?=[^\n]*--destination-type\s+queue)/ ⟫ declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
+§K fatura bağı ⟫ /declare\s+binding(?=[^\n]*--source\s+atolye\.siparisler\b)(?=[^\n]*--destination\s+atolye\.fatura\b)(?=[^\n]*--routing-key\s+fatura\b)(?=[^\n]*--destination-type\s+queue)/ ⟫ declare binding --source atolye.siparisler --destination-type queue --destination atolye.fatura --routing-key fatura
+§K paket-1 exchange'e yollandı ⟫ /publish\s+message(?=[^\n]*(?:--exchange|-e)\s+atolye\.siparisler\b)(?=[^\n]*(?:--routing-key|-k)\s+kargo\b)(?=[^\n]*(?:--payload|-m)\s+["']?paket-1)/ ⟫ publish message --exchange atolye.siparisler --routing-key kargo --payload paket-1
+§K Yanlış anahtarla mesaj yollandı ⟫ /publish\s+message(?=[^\n]*(?:--exchange|-e)\s+atolye\.siparisler\b)(?=[^\n]*(?:--routing-key|-k)\s+(?!kargo\b|fatura\b)\S+)/ ⟫ publish message --exchange atolye.siparisler --routing-key yok --payload kayip
+§COZUM
+rabbitmqadmin declare exchange --name atolye.siparisler --type direct
+rabbitmqadmin declare queue --name atolye.kargo --durable true
+rabbitmqadmin declare queue --name atolye.fatura --durable true
+rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
+rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.fatura --routing-key fatura
+rabbitmqadmin publish message --exchange atolye.siparisler --routing-key kargo --payload paket-1
+rabbitmqadmin publish message --exchange atolye.siparisler --routing-key yok --payload kayip
+
+§ADIM Fanout: tek olay, birçok alıcı | sh
 §ANLAT
-Projede RabbitMQ'yu **MassTransit** kullanır. Mesaj bir `record`, işleyen sınıf ise `IConsumer<MesajTipi>`'dir. İş bittiğinde metot hatasız dönerse mesaj **ack**'lenir; hata fırlatırsa yeniden denenir. **Hata yutma**: yutarsan sistem mesajı başarılı sanır ve kaybolur.
+Bazen **aynı olayı birden çok servis** öğrenmelidir. Örnek: "kullanıcı kaydoldu" → e-posta servisi hoş geldin yazsın **ve** istatistik servisi sayacı artırsın. Gönderen kimlerin dinlediğini bilmez, bilmesine de gerek yok.
+```
+                      ┌──► [atolye.eposta]
+yeni-uye ─► [fanout] ─┤
+                      └──► [atolye.istatistik]
+```
+**fanout** exchange routing key'e **bakmaz**; bağlı **bütün** kuyruklara birer kopya atar. Yeni bir servis eklemek için sadece yeni kuyruk bağlarsın, gönderen kodu değişmez. Bağ kurarken `--routing-key` zorunludur; fanout'ta yok sayıldığı için boş yazılır: `--routing-key ""`.
+§ORNEK
+rabbitmqadmin declare exchange --name atolye.demo-olay --type fanout
+rabbitmqadmin declare queue --name atolye.demo-a --durable true
+rabbitmqadmin declare queue --name atolye.demo-b --durable true
+rabbitmqadmin declare binding --source atolye.demo-olay --destination-type queue --destination atolye.demo-a --routing-key ""
+rabbitmqadmin declare binding --source atolye.demo-olay --destination-type queue --destination atolye.demo-b --routing-key ""
+rabbitmqadmin publish message --exchange atolye.demo-olay --routing-key "" --payload merhaba
+§GOREV
+`atolye.olaylar` adlı **fanout** exchange aç. `atolye.eposta` ve `atolye.istatistik` kuyruklarını aç ve ikisini de bu exchange'e bağla (`--routing-key ""`). Sonra exchange'e **tek** mesaj yolla: `yeni-uye`. Sonuç tablosunda iki kuyrukta da 1 mesaj olmalı.
+§BASLANGIC
+# fanout exchange
+rabbitmqadmin declare exchange --name atolye.olaylar --type fanout
+
+# iki kuyruk
+
+# iki bağ (routing key boş: "")
+
+# tek mesaj: yeni-uye
+
+§K fanout exchange ⟫ /declare\s+exchange(?=[^\n]*--name\s+atolye\.olaylar\b)(?=[^\n]*--type\s+fanout)/ ⟫ declare exchange --name atolye.olaylar --type fanout
+§K e-posta kuyruğu ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.eposta\b)/ ⟫ declare queue --name atolye.eposta --durable true
+§K istatistik kuyruğu ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.istatistik\b)/ ⟫ declare queue --name atolye.istatistik --durable true
+§K e-posta bağlandı ⟫ /declare\s+binding(?=[^\n]*--source\s+atolye\.olaylar\b)(?=[^\n]*--destination\s+atolye\.eposta\b)(?=[^\n]*--destination-type\s+queue)/ ⟫ declare binding --source atolye.olaylar --destination-type queue --destination atolye.eposta --routing-key ""
+§K istatistik bağlandı ⟫ /declare\s+binding(?=[^\n]*--source\s+atolye\.olaylar\b)(?=[^\n]*--destination\s+atolye\.istatistik\b)(?=[^\n]*--destination-type\s+queue)/ ⟫ declare binding --source atolye.olaylar --destination-type queue --destination atolye.istatistik --routing-key ""
+§K Tek mesaj yollandı ⟫ /publish\s+message(?=[^\n]*(?:--exchange|-e)\s+atolye\.olaylar\b)(?=[^\n]*(?:--payload|-m)\s+["']?yeni-uye)/ ⟫ publish message --exchange atolye.olaylar --routing-key "" --payload yeni-uye
+§COZUM
+rabbitmqadmin declare exchange --name atolye.olaylar --type fanout
+rabbitmqadmin declare queue --name atolye.eposta --durable true
+rabbitmqadmin declare queue --name atolye.istatistik --durable true
+rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.eposta --routing-key ""
+rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.istatistik --routing-key ""
+rabbitmqadmin publish message --exchange atolye.olaylar --routing-key "" --payload yeni-uye
+
+§ADIM Topic: desenle yönlendir (log kuyrukları) | sh
+§ANLAT
+**topic** exchange, routing key'i **noktalı kelimelerle** yazdırır (`odeme.hata`, `stok.bilgi`) ve bağda **desen** kullandırır:
+- `*` = tam **bir** kelime → `*.hata` = `odeme.hata` ✔, `stok.hata` ✔, `odeme.cok.hata` ✘
+- `#` = **sıfır veya daha çok** kelime → `#` = her şey, `odeme.#` = `odeme.` ile başlayanlar
+
+Örnek: bir kuyruk sadece **hataları** (`*.hata`), diğeri **her şeyi** (`#`) toplasın:
+```
+odeme.hata ─┐                ┌─ *.hata ─► [atolye.hatalar]
+odeme.bilgi ┼─► [topic ex] ──┤
+stok.hata  ─┘                └─ #      ─► [atolye.tum]
+```
+Kabuk (shell) `*` işaretini dosya adı sanabilir; bu yüzden deseni **tek tırnak** içine al: `--routing-key '*.hata'`.
+§ORNEK
+rabbitmqadmin declare exchange --name atolye.demo-log --type topic
+rabbitmqadmin declare queue --name atolye.demo-odeme --durable true
+rabbitmqadmin declare binding --source atolye.demo-log --destination-type queue --destination atolye.demo-odeme --routing-key 'odeme.#'
+rabbitmqadmin publish message --exchange atolye.demo-log --routing-key odeme.basarili --payload ok
+rabbitmqadmin publish message --exchange atolye.demo-log --routing-key stok.bilgi --payload ilgisiz
+§GOREV
+`atolye.log` adlı **topic** exchange aç. İki kuyruk: `atolye.hatalar` (anahtar deseni `'*.hata'`) ve `atolye.tum` (anahtar deseni `'#'`). Exchange'e üç mesaj yolla: anahtar `odeme.hata` (içerik `m1`), `odeme.bilgi` (`m2`), `stok.hata` (`m3`). Sonuçta `atolye.hatalar`'da 2, `atolye.tum`'da 3 mesaj olmalı.
+§BASLANGIC
+rabbitmqadmin declare exchange --name atolye.log --type topic
+
+# kuyruklar: atolye.hatalar ve atolye.tum
+
+# bağlar: '*.hata' ve '#'
+
+# üç mesaj: odeme.hata (m1), odeme.bilgi (m2), stok.hata (m3)
+
+§K topic exchange ⟫ /declare\s+exchange(?=[^\n]*--name\s+atolye\.log\b)(?=[^\n]*--type\s+topic)/ ⟫ declare exchange --name atolye.log --type topic
+§K iki kuyruk ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.hatalar\b)[\s\S]*declare\s+queue(?=[^\n]*--name\s+atolye\.tum\b)|declare\s+queue(?=[^\n]*--name\s+atolye\.tum\b)[\s\S]*declare\s+queue(?=[^\n]*--name\s+atolye\.hatalar\b)/ ⟫ declare queue --name atolye.hatalar --durable true  (ve atolye.tum için aynısı)
+§K hatalar bağı: *.hata ⟫ /declare\s+binding(?=[^\n]*--destination\s+atolye\.hatalar\b)(?=[^\n]*--routing-key\s+['"]\*\.hata['"])/ ⟫ --routing-key '*.hata'
+§K tum bağı: # ⟫ /declare\s+binding(?=[^\n]*--destination\s+atolye\.tum\b)(?=[^\n]*--routing-key\s+['"]#['"])/ ⟫ --routing-key '#'
+§K odeme.hata mesajı ⟫ /publish\s+message(?=[^\n]*(?:--exchange|-e)\s+atolye\.log\b)(?=[^\n]*(?:--routing-key|-k)\s+odeme\.hata\b)/ ⟫ publish message --exchange atolye.log --routing-key odeme.hata --payload m1
+§K odeme.bilgi mesajı ⟫ /publish\s+message(?=[^\n]*(?:--exchange|-e)\s+atolye\.log\b)(?=[^\n]*(?:--routing-key|-k)\s+odeme\.bilgi\b)/ ⟫ publish message --exchange atolye.log --routing-key odeme.bilgi --payload m2
+§K stok.hata mesajı ⟫ /publish\s+message(?=[^\n]*(?:--exchange|-e)\s+atolye\.log\b)(?=[^\n]*(?:--routing-key|-k)\s+stok\.hata\b)/ ⟫ publish message --exchange atolye.log --routing-key stok.hata --payload m3
+§COZUM
+rabbitmqadmin declare exchange --name atolye.log --type topic
+rabbitmqadmin declare queue --name atolye.hatalar --durable true
+rabbitmqadmin declare queue --name atolye.tum --durable true
+rabbitmqadmin declare binding --source atolye.log --destination-type queue --destination atolye.hatalar --routing-key '*.hata'
+rabbitmqadmin declare binding --source atolye.log --destination-type queue --destination atolye.tum --routing-key '#'
+rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.hata --payload m1
+rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.bilgi --payload m2
+rabbitmqadmin publish message --exchange atolye.log --routing-key stok.hata --payload m3
+
+§ADIM Ölü mektup kuyruğu (DLX) ve zaman aşımı (TTL) | sh
+§ANLAT
+İşlenemeyen mesaj **çöpe gitmesin**: ayrı bir "ölü mektup kutusu"na (dead-letter queue) düşsün, sonra incelenir. Bir mesaj şu durumlarda "ölür":
+1. Consumer **reddeder** (`reject`, tekrar kuyruğa koymadan),
+2. mesajın **süresi dolar** (`x-message-ttl`, milisaniye),
+3. kuyruk uzunluk sınırını aşar.
+
+Kurulum 3 parça:
+```
+[atolye.is]  --(ölürse: x-dead-letter-exchange)-->  [atolye.olu exchange] --> [atolye.olu-kutusu]
+```
+1. Ölü mektup exchange'i + kutusu (fanout, boş anahtarla bağlı).
+2. Asıl kuyruğa **argüman** olarak yazılır: `--arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'` (JSON tek tırnak içinde).
+3. Mesaj ölünce RabbitMQ başlığa **neden öldüğünü** yazar (`reason: rejected` ya da `expired`). `get messages` çıktısında bunu göreceksin.
+
+`sleep 3` satırı çalışmayı 3 sn bekletir (TTL 2 sn dolsun diye).
+§ORNEK
+rabbitmqadmin declare exchange --name atolye.demo-olu --type fanout
+rabbitmqadmin declare queue --name atolye.demo-kutu --durable true
+rabbitmqadmin declare binding --source atolye.demo-olu --destination-type queue --destination atolye.demo-kutu --routing-key ""
+rabbitmqadmin declare queue --name atolye.demo-is --durable true --arguments '{"x-dead-letter-exchange":"atolye.demo-olu","x-message-ttl":1500}'
+rabbitmqadmin publish message --routing-key atolye.demo-is --payload zamanasimi
+sleep 2
+rabbitmqadmin get messages --queue atolye.demo-kutu --ack-mode ack_requeue_true
+§GOREV
+`atolye.olu` (fanout) exchange'ini, `atolye.olu-kutusu` kuyruğunu ve aralarındaki bağı (anahtar `""`) kur. `atolye.is` kuyruğunu `x-dead-letter-exchange: atolye.olu` ve `x-message-ttl: 2000` argümanlarıyla aç. `atolye.is`'e iki mesaj yolla: `is-1`, `is-2`. Kuyruk sıralıdır (FIFO): `reject_requeue_false` ile bir mesaj al, bu ilk mesaj (`is-1`) **reddedilmiş** olur. `sleep 3` ile bekle (kalan `is-2` süresi dolsun). Sonra `atolye.olu-kutusu`'ndan `--count 5` ile **bak** (`ack_requeue_true`): iki mesaj da orada ve nedenleri farklı olmalı.
+§BASLANGIC
+# ölü mektup exchange'i, kutusu ve bağı
+rabbitmqadmin declare exchange --name atolye.olu --type fanout
+
+# asıl kuyruk (DLX + TTL argümanlı)
+
+# iki mesaj: is-1, is-2
+
+# ilk mesajı (is-1) reddet: reject_requeue_false
+
+# is-2'nin süresi dolsun (TTL 2 sn)
+
+# ölü mektup kutusuna bak (--count 5, ack_requeue_true)
+
+§K olu exchange (fanout) ⟫ /declare\s+exchange(?=[^\n]*--name\s+atolye\.olu\b)(?=[^\n]*--type\s+fanout)/ ⟫ declare exchange --name atolye.olu --type fanout
+§K olu-kutusu kuyruğu ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.olu-kutusu\b)/ ⟫ declare queue --name atolye.olu-kutusu --durable true
+§K olu-kutusu bağı ⟫ /declare\s+binding(?=[^\n]*--source\s+atolye\.olu\b)(?=[^\n]*--destination\s+atolye\.olu-kutusu\b)/ ⟫ declare binding --source atolye.olu --destination-type queue --destination atolye.olu-kutusu --routing-key ""
+§K x-dead-letter-exchange argümanı ⟫ /declare\s+queue(?=[^\n]*--name\s+atolye\.is\b)(?=[^\n]*"x-dead-letter-exchange"\s*:\s*"atolye\.olu")/ ⟫ --arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'
+§K x-message-ttl: 2000 ⟫ /"x-message-ttl"\s*:\s*2000/ ⟫ "x-message-ttl":2000  (sayı tırnaksız, milisaniye)
+§K is-1 ve is-2 yollandı ⟫ /publish\s+message(?=[^\n]*atolye\.is\b)(?=[^\n]*is-1)[\s\S]*publish\s+message(?=[^\n]*atolye\.is\b)(?=[^\n]*is-2)/ ⟫ publish message --routing-key atolye.is --payload is-1  (sonra is-2)
+§K İlk mesaj reddedildi ⟫ /get\s+messages(?=[^\n]*(?:--queue|-q)\s+atolye\.is\b)(?=[^\n]*reject_requeue_false)/ ⟫ get messages --queue atolye.is --ack-mode reject_requeue_false
+§K Bekleme (sleep) ⟫ /^\s*sleep\s+[2-5]\s*$/m ⟫ sleep 3
+§K Ölü mektup kutusuna bakıldı ⟫ /get\s+messages(?=[^\n]*(?:--queue|-q)\s+atolye\.olu-kutusu\b)(?=[^\n]*(?:--count|-c)\s+[2-9])/ ⟫ get messages --queue atolye.olu-kutusu --count 5 --ack-mode ack_requeue_true
+§COZUM
+rabbitmqadmin declare exchange --name atolye.olu --type fanout
+rabbitmqadmin declare queue --name atolye.olu-kutusu --durable true
+rabbitmqadmin declare binding --source atolye.olu --destination-type queue --destination atolye.olu-kutusu --routing-key ""
+rabbitmqadmin declare queue --name atolye.is --durable true --arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'
+rabbitmqadmin publish message --routing-key atolye.is --payload is-1
+rabbitmqadmin publish message --routing-key atolye.is --payload is-2
+rabbitmqadmin get messages --queue atolye.is --ack-mode reject_requeue_false
+sleep 3
+rabbitmqadmin get messages --queue atolye.olu-kutusu --count 5 --ack-mode ack_requeue_true
+
+§ADIM Gerçek C# kodu: consumer yaz (RabbitMQ.Client) | cs
+§ANLAT
+Şimdiye kadar mesajları komutla okudun. Gerçek uygulamada bunu **kod** yapar. Resmi C# kütüphanesi `RabbitMQ.Client`. Sıra her zaman aynı:
+1. **Bağlantı** (`CreateConnectionAsync`) → 2. **kanal** (`CreateChannelAsync`) → 3. **kuyruk** (`QueueDeclareAsync`)
+4. **Consumer** nesnesi (`AsyncEventingBasicConsumer`) → 5. mesaj gelince çalışacak **olay** (`ReceivedAsync`)
+6. **Dinlemeyi başlat** (`BasicConsumeAsync`, `autoAck: false`)
+7. İş bitince **ack** (`BasicAckAsync`).
+
+Bu atölyede 1-3 senin yerine **hazır**: elinde `ch` (kanal) ve `kuyruk` (adı `atolye.cs`) var, kuyrukta 3 mesaj bekliyor. Sen 4-7'yi yazıyorsun.
+
+`autoAck: false` demek "ben ack verene kadar mesajı silme". Ack'i unutursan program bitince mesajlar **kuyruğa geri döner** (çalıştırınca bunu göreceksin: "Kuyrukta bekleyen mesaj: 3").
+§ORNEK
+var c = new AsyncEventingBasicConsumer(ch);
+c.ReceivedAsync += async (_, ea) =>
+{
+    var govde = Encoding.UTF8.GetString(ea.Body.ToArray());
+    Console.WriteLine($"[örnek] {govde} ({govde.Length} karakter)");
+    await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
+};
+await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
+§GOREV
+`tuketici` adında bir `AsyncEventingBasicConsumer(ch)` oluştur. `ReceivedAsync` olayında mesajın gövdesini (`ea.Body.ToArray()`) `Encoding.UTF8.GetString` ile metne çevir, `Alındı: ...` diye yazdır, sonra `BasicAckAsync(ea.DeliveryTag, multiple: false)` ile **ack** ver. En sonda `BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici)` ile dinlemeyi başlat.
+§BASLANGIC
+// Hazır: ch (kanal) ve kuyruk ("atolye.cs"); kuyrukta 3 mesaj bekliyor.
+// 1) consumer nesnesi
+
+// 2) mesaj gelince: oku, yazdır, ack
+
+// 3) dinlemeyi başlat
+
+§K AsyncEventingBasicConsumer(ch) ⟫ /new\s+AsyncEventingBasicConsumer\(\s*ch\s*\)/ ⟫ var tuketici = new AsyncEventingBasicConsumer(ch);
+§K ReceivedAsync olayı ⟫ /\.ReceivedAsync\s*\+=/ ⟫ tuketici.ReceivedAsync += async (_, ea) => { ... };
+§K Gövde metne çevrildi ⟫ /Encoding\.UTF8\.GetString\(\s*ea\.Body\.ToArray\(\)\s*\)/ ⟫ Encoding.UTF8.GetString(ea.Body.ToArray())
+§K Ack verildi ⟫ /BasicAckAsync\(\s*ea\.DeliveryTag\s*,\s*(multiple:\s*)?false\s*\)/ ⟫ await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
+§K Dinleme başlatıldı (autoAck: false) ⟫ /BasicConsumeAsync\(\s*kuyruk\s*,\s*autoAck:\s*false\s*,\s*consumer:\s*\w+\s*\)/ ⟫ await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);
+§COZUM
+var tuketici = new AsyncEventingBasicConsumer(ch);
+tuketici.ReceivedAsync += async (_, ea) =>
+{
+    var metin = Encoding.UTF8.GetString(ea.Body.ToArray());
+    Console.WriteLine($"Alındı: {metin}");
+    await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
+};
+await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);
+
+§ADIM Projede nasıl yapılır: MassTransit consumer | cs
+§ANLAT
+`RabbitMQ.Client` ile bağlantı, kanal, ack, yeniden bağlanma gibi işleri **sen** yazarsın. **MassTransit** bunların hepsini senin yerine yapan bir kütüphanedir: sen sadece **mesaj tipi** (bir `record`) ve onu işleyen **consumer sınıfı** yazarsın. Bu projede böyle yapılır.
+- Metot **hatasız biterse** MassTransit mesajı **ack**'ler.
+- **Hata fırlatırsa** mesaj yeniden denenir (bir sonraki adımda).
+- **Hatayı `try/catch` ile yutma**: yutarsan sistem "başarılı" sanır, mesaj sessizce kaybolur.
+Bu adım sadece kod yazma pratiği; sayfada çalıştırılamaz (MassTransit uygulama içinde çalışır), **Kontrol et** ile doğrulanır.
 §ORNEK
 public record SiparisAlindi(Guid SiparisId, string Musteri);
 
@@ -83,7 +330,7 @@ public class AiIstegiConsumer(ILogger<AiIstegiConsumer> log) : IConsumer<AiIsteg
 
 §ADIM Yeniden deneme (retry) ayarı | cs
 §ANLAT
-Geçici hata (ağ kopması, LiteLLM yoğun) tekrar denenince düzelebilir. **Üstel bekleme** (exponential backoff) denemeler arasındaki süreyi büyütür, böylece sistemi bunaltmazsın. Tüm denemeler biterse mesaj `_error` kuyruğuna düşer. Mesaj **en az bir kez** (at-least-once) teslim edildiği için işlem **idempotent** olmalı: iki kez gelse de zarar vermesin.
+Geçici hata (ağ kopması, LiteLLM yoğun) tekrar denenince düzelebilir. **Üstel bekleme** (exponential backoff) denemeler arasındaki süreyi büyütür, böylece sistemi bunaltmazsın. Tüm denemeler biterse mesaj `_error` kuyruğuna düşer (az önce kurduğun ölü mektup kutusunun MassTransit karşılığı). Mesaj **en az bir kez** (at-least-once) teslim edildiği için işlem **idempotent** olmalı: iki kez gelse de zarar vermesin.
 §ORNEK
 e.UseMessageRetry(r => r.Exponential(3, TimeSpan.FromSeconds(2), TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(10)));
 §GOREV
@@ -106,26 +353,20 @@ cfg.ReceiveEndpoint("ai-istegi", e =>
     e.ConfigureConsumer<AiIstegiConsumer>(ctx);
 });
 
-§ADIM Exchange tipi seç | txt
-§ANLAT
-Dört tip vardır: **direct** (routing key birebir eşleşen kuyruğa), **fanout** (bağlı TÜM kuyruklara kopyalar), **topic** (desenle: `siparis.*`), **headers** (başlık değerine göre).
-§ORNEK
-Tek bir "kullanıcı kaydoldu" olayını hem e-posta kuyruğuna hem istatistik kuyruğuna göndermek istersen: **fanout**.
-§GOREV
-Gelen her mesajı bağlı **bütün** kuyruklara kopyalayan exchange tipinin adını yaz (tek kelime).
-§BASLANGIC
-tip:
-§K fanout ⟫ /fanout/i ⟫ bütün kuyruklara kopyalayan tip: fan...
-§K Tek bir tip yazıldı (diğer tipler anılmadı) ⟫ !/direct|topic|headers/i ⟫ sadece cevabı yaz, diğer tip adlarını yazma
-§COZUM
-tip: fanout
-
 §SORU Exchange tipleri nelerdir ve farkları?
-direct: routing key birebir. fanout: bağlı tüm kuyruklara kopya. topic: `*` (bir kelime) ve `#` (çok kelime) ile desen. headers: mesaj başlıklarına göre.
+direct: routing key birebir. fanout: bağlı tüm kuyruklara kopya (anahtara bakmaz). topic: `*` (bir kelime) ve `#` (sıfır/çok kelime) ile desen. headers: mesaj başlıklarına göre.
+§SORU Producer mesajı neden kuyruğa değil exchange'e bırakır?
+Gönderen kimin dinlediğini bilmez; yönlendirme exchange + binding kurallarının işidir. Yeni alıcı eklemek için sadece yeni kuyruk bağlanır, gönderen kod değişmez (gevşek bağlılık).
+§SORU Yanlış routing key ile mesaj yollarsan ne olur?
+Mesaj hiçbir kuyruğa ulaşmaz ve sessizce kaybolur (hata fırlatılmaz; publish "NOT routed" döner). Önlem: `mandatory` bayrağı/publisher return ya da bağları doğrulamak.
+§SORU ack, nack ve reject farkı? ack_requeue_true ne işe yarar?
+ack = "işledim, sil". nack/reject = "işleyemedim"; `requeue=true` ise kuyruğa geri konur (yeniden_teslim=true olur), `requeue=false` ise ölü mektup exchange'i varsa oraya gider, yoksa silinir. `ack_requeue_true` ile mesaja bakıp geri koyabilirsin.
+§SORU Mesajın RabbitMQ yeniden başlayınca kaybolmaması için ne gerekir?
+Üçü birden: kuyruk **durable**, mesaj **persistent** (`delivery_mode: 2`) ve consumer'da **ack** doğru verilmeli. Biri eksikse mesaj kaybolabilir.
 §SORU At-most-once, at-least-once, exactly-once farkı? Neden idempotency?
 At-most-once kayıp olabilir, at-least-once **tekrar olabilir**, exactly-once pratikte zor. RabbitMQ at-least-once teslim eder; aynı mesaj iki kez gelebilir, bu yüzden işlem tekrar edildiğinde zarar vermeyecek şekilde (idempotent) yazılmalı. Projede iş fişi `Bekliyor → İşleniyor` atomik geçişiyle bunu sağlar.
 §SORU Dead-letter queue nedir? Poison message nedir?
-İşlenemeyen mesajların aktarıldığı kuyruk. Poison message, sürekli hata verip kuyruğu tıkayan mesajdır; retry sonrası DLQ/`_error` kuyruğuna alınarak diğer mesajlar akmaya devam eder.
+İşlenemeyen mesajların aktarıldığı kuyruk. Poison message, sürekli hata verip kuyruğu tıkayan mesajdır; retry sonrası DLQ/`_error` kuyruğuna alınarak diğer mesajlar akmaya devam eder. Mesaj reddedilince ya da TTL dolunca RabbitMQ başlığa nedenini yazar (`x-death`: rejected/expired).
 §SORU Send ile Publish farkı (MassTransit)?
 `Send` belirli bir kuyruğa gider, tüketici yoksa bile mesaj kuyrukta bekler. `Publish` mesaj tipine abone exchange'e gider; abone yoksa mesaj **kaybolur**. Bu yüzden projede `queue:ai-istegi`'ne Send kullanıldı.
 §SORU RabbitMQ ile Kafka farkı (kısaca)?

@@ -67,6 +67,14 @@ textarea:focus{outline:2px solid var(--acc)}
 details.nasil{margin:12px 0 4px;border:1px dashed var(--acc);border-radius:10px;padding:0 14px;background:var(--chip)}
 details.nasil>summary{cursor:pointer;padding:10px 0;font-weight:700;color:var(--acc)}
 details.nasil .md{padding-bottom:10px}
+.ornbtn{margin:-2px 0 12px}.ornbtn .btn{padding:6px 12px;font-size:13px}.cal,.ornsonuc{margin-top:10px}.cal pre,.ornsonuc pre{margin:4px 0;max-height:420px}
+.calbas{font-size:14px;font-weight:700;margin-top:8px}.calbas.ok{color:var(--ok)}.calbas.hata{color:var(--bad)}
+.yaz{margin-top:12px;border:2px dashed var(--acc);border-radius:12px;padding:12px 14px;background:var(--chip)}
+.yaz .hedef{white-space:pre-wrap;word-break:break-word;margin:6px 0;font:13.5px/1.6 Consolas,monospace;background:var(--code);color:var(--codeink)}
+.yaz .dogru{color:#4cc58a}.yaz .yanlis{background:#c93a3a;color:#fff;border-radius:3px}.yaz .kalan{opacity:.5}
+.yaz .imlec{border-left:3px solid #7aa2ff;margin-left:-1px;animation:yan 1s steps(1) infinite}
+@keyframes yan{50%{border-color:transparent}}
+.yaz textarea{min-height:110px}.yazbilgi{font-size:14px;margin:2px 0 6px}
 .devam{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--chip);border:1px solid var(--acc);border-radius:12px;padding:10px 16px;margin:6px 0 14px}
 .devam b{color:var(--acc)}.devam .btn{padding:7px 16px;margin-left:auto}
 details.konu{background:var(--panel);border:2px solid var(--acc);border-radius:14px;margin:12px 0}
@@ -87,7 +95,7 @@ details.konu>summary{cursor:pointer;padding:14px 18px;font-weight:700;font-size:
 <script>
 const $ = s => document.querySelector(s);
 const LS = 'atolye-egz-v1';
-let labs = [], st = { adim: {}, taslak: {}, deneme: {}, konu: {}, t: 0 }, aktif = null, konular = {}, nasil = {}, ek = {};
+let labs = [], st = { adim: {}, taslak: {}, deneme: {}, konu: {}, t: 0 }, aktif = null, konular = {}, nasil = {}, ek = {}, cikti = {}, calisir = new Set(), ornekOk = new Set();
 try { Object.assign(st, JSON.parse(localStorage.getItem(LS) || '{}')); } catch (e) {}
 let _sync = 0;
 const kaydet = () => {
@@ -127,17 +135,22 @@ function adimHtml(l, a, i) {
     <summary><span class="rozet">${rozet}</span>${esc(a.b)}</summary>
     <div class="icerik">
       <div class="md">${md(a.anlat)}</div>
-      <h4>Örnek</h4><pre><code>${esc(a.ornek)}</code></pre>
+      <h4>Örnek</h4><pre><code>${esc(a.ornek)}</code></pre>${ornekOk.has(k) ? ORNBTN : ''}
       ${nasil[k] ? `<details class="nasil" ${acik ? 'open' : ''}><summary>🧩 Nasıl yazılır? (parça parça — takılırsan aç)</summary><div class="md">${md(nasil[k])}</div></details>` : ''}
-      ${ek[k] ? `<details class="nasil ek"><summary>📚 Başka örnekler (görevden önce bunlara bak)</summary><div class="md">${md(ek[k])}</div></details>` : ''}
+      ${ek[k] ? `<details class="nasil ek"><summary>📚 Başka örnekler (görevden önce bunlara bak)</summary><div class="md">${ornekOk.has(k) ? md(ek[k]).replace(/<\/pre>/g, '</pre>' + ORNBTN) : md(ek[k])}</div></details>` : ''}
+      ${cikti[k] ? `<details class="nasil cikti"><summary>▶ Çalıştırınca ne görürsün? (gerçek çıktı)</summary><div class="md">${md(cikti[k])}</div></details>` : ''}
       <div class="gorev md"><b>Görev:</b> ${md(a.gorev)}</div>
       <textarea spellcheck="false" rows="${Math.max(7, Math.min(22, (taslak.split('\n').length) + 3))}">${esc(taslak)}</textarea>
       <div class="btnler">
         <button class="btn" data-act="kontrol">✔ Kontrol et <small>(Ctrl+Enter)</small></button>
         <button class="btn ikinci" data-act="cozum">👀 Çözümü göster</button>
+        <button class="btn ikinci" data-act="calistir" ${calisir.has(k) ? '' : 'disabled title="Bu adım sayfada çalıştırılamaz; Kontrol et ile doğrula."'}>▶ Çalıştır <small>(sonucu gör)</small></button>
+        <button class="btn ikinci" data-act="yaz">⌨ Yazarak çalış</button>
         <button class="btn ikinci" data-act="basa">↺ Başa al</button>
       </div>
       <div class="sonuc"></div>
+      <div class="cal"></div>
+      <div class="yaz" hidden></div>
     </div></details>`;
 }
 
@@ -158,6 +171,44 @@ function devamCiz() {
 function adimaGit(i) {
   const d = $('#main').querySelectorAll('details.adim')[i]; if (!d) return;
   d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function yazCiz(box) {
+  const hedef = box._hedef, ta = box.querySelector('textarea'); let t = ta.value.replace(/\r/g, '');
+  // satır sonunda Enter'a basınca sıradaki satırın girintisini otomatik koy
+  if (t.endsWith('\n') && hedef.startsWith(t)) { const g = hedef.slice(t.length).match(/^[ \t]*/)[0]; if (g) { t += g; ta.value = t; } }
+  let m = 0; while (m < t.length && m < hedef.length && t[m] === hedef[m]) m++;
+  const hata = t.length > m, bitti = t.replace(/\s+$/, '') === hedef.replace(/\s+$/, '');
+  const e = esc, ims = '<span class="imlec"></span>';
+  let html = '<span class="dogru">' + e(hedef.slice(0, m)) + '</span>';
+  if (hata) html += '<span class="yanlis">' + e(hedef[m] === '\n' ? '↵\n' : (hedef[m] || '∎')) + '</span><span class="kalan">' + e(hedef.slice(m + 1)) + '</span>';
+  else html += ims + '<span class="kalan">' + e(hedef.slice(m)) + '</span>';
+  box.querySelector('.hedef').innerHTML = html;
+  const yuzde = Math.round(100 * m / Math.max(1, hedef.length)), sira = hedef[m];
+  box.querySelector('.yazbilgi').innerHTML = bitti ? '<b style="color:var(--ok)">🎉 Kodu hatasız yazdın! Şimdi "Editöre aktar" ile adıma geçir.</b>'
+    : hata ? `<b style="color:var(--bad)">✘ Hata:</b> beklenen <code>${e(sira === '\n' ? '↵ (Enter)' : (sira === ' ' ? '␣ (boşluk)' : (sira || 'bitti')))}</code> — son yazdığın harfi sil.`
+    : `%${yuzde} · sıradaki: <code>${e(sira === '\n' ? '↵ (Enter)' : (sira === ' ' ? '␣ (boşluk)' : (sira || 'bitti')))}</code>`;
+  box.querySelector('[data-act=yazaktar]').disabled = !bitti;
+}
+const ORNBTN = '<div class="ornbtn"><button class="btn ikinci" data-act="ornekcal">▶ Bu örneği çalıştır</button><div class="ornsonuc"></div></div>';
+async function ornekCalistir(k, btn) {
+  const kutu = btn.parentElement.querySelector('.ornsonuc'), pre = btn.parentElement.previousElementSibling;
+  const kod = pre ? (pre.querySelector('code') || pre).innerText : '';
+  const eski = btn.innerHTML; btn.disabled = true; btn.textContent = '⏳ Çalışıyor…'; kutu.innerHTML = '';
+  try {
+    const r = await fetch('/api/calistir/' + k, { method: 'POST', headers: { 'X-Atolye': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ kod }) }).then(x => x.json());
+    kutu.innerHTML = `<div class="calbas ${r.ok ? 'ok' : 'hata'}">${r.ok ? '▶ Çalıştı — gerçek çıktı:' : '⚠ Çalıştı ama hata/uyarı var:'}</div><pre><code>${esc(r.cikti || '')}</code></pre>`;
+  } catch (e) { kutu.innerHTML = '<div class="calbas hata">Sunucuya ulaşılamadı (python atolye/sunucu.py çalışıyor mu?).</div>'; }
+  btn.disabled = false; btn.innerHTML = eski;
+}
+async function calistirAdim(l, i, det, btn) {
+  const k = anahtar(l, i), kod = det.querySelector('textarea:not(.yazta)').value, kutu = det.querySelector('.cal');
+  if (!kod.trim() || kod.trim() === l.adimlar[i].baslangic.trim()) { kutu.innerHTML = '<div class="calbas hata">Önce editöre kodu yaz (ya da "Yazarak çalış" ile yazıp aktar).</div>'; return; }
+  const eski = btn.innerHTML; btn.disabled = true; btn.textContent = '⏳ Çalışıyor…'; kutu.innerHTML = '';
+  try {
+    const r = await fetch('/api/calistir/' + k, { method: 'POST', headers: { 'X-Atolye': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ kod }) }).then(x => x.json());
+    kutu.innerHTML = `<div class="calbas ${r.ok ? 'ok' : 'hata'}">${r.ok ? '▶ Çalıştı — gerçek çıktı:' : '⚠ Çalıştı ama hata/uyarı var:'}</div><pre><code>${esc(r.cikti || '')}</code></pre>`;
+  } catch (e) { kutu.innerHTML = '<div class="calbas hata">Sunucuya ulaşılamadı (python atolye/sunucu.py çalışıyor mu?).</div>'; }
+  btn.disabled = false; btn.innerHTML = eski;
 }
 function sec(id) {
   const n = labs.findIndex(l => l.id === id); if (n < 0) return;
@@ -199,7 +250,7 @@ function kontrol(l, i, det) {
   const sonuc = det.querySelector('.sonuc');
   let html = r.sonuc.map(x => `<div class="satir ${x.ok ? 'ok' : 'hata'}">${esc(x.ad)}${x.ok ? '' : `<span class="ipucu">💡 ${esc(x.ipucu)}</span>`}</div>`).join('');
   if (r.gecti) {
-    st.adim[k] = 'ok'; det.className = 'adim ok'; det.querySelector('.rozet').textContent = '✔';
+    st.adim[k] = 'ok'; det.className = 'adim ok'; const cd = det.querySelector('details.cikti'); if (cd) cd.open = true; det.querySelector('.rozet').textContent = '✔';
     html = `<div class="basarili">Tamam! Bu adımı geçtin ✔</div>` + html;
     const sonrakiAdim = l.adimlar.findIndex((_, j) => !adimBitti(l, j));
     if (sonrakiAdim >= 0) { const d2 = $('#main').querySelectorAll('details.adim')[sonrakiAdim]; if (d2) d2.open = true; }
@@ -217,6 +268,24 @@ $('#main').addEventListener('click', e => {
   const det = b.closest('details.adim'); const l = labs.find(x => x.id === aktif); const i = Number(det.dataset.i);
   const a = l.adimlar[i], k = anahtar(l, i);
   if (b.dataset.act === 'kontrol') kontrol(l, i, det);
+  if (b.dataset.act === 'ornekcal') { ornekCalistir(k, b); return; }
+  if (b.dataset.act === 'calistir') { calistirAdim(l, i, det, b); return; }
+  if (b.dataset.act === 'yaz') {
+    const box = det.querySelector('.yaz');
+    if (!box.hidden) { box.hidden = true; return; }
+    box._hedef = a.cozum.replace(/\r/g, '');
+    box.innerHTML = `<b>⌨ Yazarak çalış</b> — aşağıdaki kodu <u>aynen</u> yaz. Yeşil = doğru, kırmızı = hata. Enter'a basınca girinti otomatik gelir.
+      <div class="yazbilgi"></div><pre class="hedef"></pre>
+      <textarea class="yazta" spellcheck="false" placeholder="Buraya yaz..."></textarea>
+      <div class="btnler"><button class="btn" data-act="yazaktar" disabled>Editöre aktar ↑</button><button class="btn ikinci" data-act="yazbas">↺ Baştan</button><button class="btn ikinci" data-act="yazkapat">Kapat</button></div>`;
+    box.hidden = false; yazCiz(box); box.querySelector('textarea').focus(); return;
+  }
+  if (b.dataset.act === 'yazbas') { const box = det.querySelector('.yaz'); box.querySelector('textarea').value = ''; yazCiz(box); return; }
+  if (b.dataset.act === 'yazkapat') { det.querySelector('.yaz').hidden = true; return; }
+  if (b.dataset.act === 'yazaktar') {
+    const box = det.querySelector('.yaz'), ta = det.querySelector('textarea:not(.yazta)');
+    ta.value = box._hedef; st.taslak[k] = ta.value; kaydet(); box.hidden = true; ta.focus(); ta.scrollIntoView({ block: 'center' }); return;
+  }
   if (b.dataset.act === 'basa') { det.querySelector('textarea').value = a.baslangic; delete st.taslak[k]; kaydet(); det.querySelector('.sonuc').innerHTML = ''; }
   if (b.dataset.act === 'cozum') {
     if (st.adim[k] !== 'ok') { st.adim[k] = 'gor'; det.className = 'adim gor'; det.querySelector('.rozet').textContent = '👀'; }
@@ -227,9 +296,11 @@ $('#main').addEventListener('click', e => {
 $('#main').addEventListener('keydown', e => {
   if (e.target.tagName !== 'TEXTAREA') return;
   if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart; t.value = t.value.slice(0, s) + '  ' + t.value.slice(t.selectionEnd); t.selectionStart = t.selectionEnd = s + 2; }
+  if (e.target.classList.contains('yazta')) return;
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.target.closest('details').querySelector('[data-act=kontrol]').click(); }
 });
 $('#main').addEventListener('input', e => {
+  if (e.target.classList.contains('yazta')) { yazCiz(e.target.closest('.yaz')); return; }
   if (e.target.tagName !== 'TEXTAREA') return;
   const l = labs.find(x => x.id === aktif), i = Number(e.target.closest('details').dataset.i);
   st.taslak[anahtar(l, i)] = e.target.value; kaydet();
@@ -246,6 +317,8 @@ $('#sifirla').onclick = () => { if (confirm('Tüm ilerleme ve yazdıkların sili
     const bol = (metin, ad, hedef) => metin.split(new RegExp('^§' + ad + '\\s+', 'm')).slice(1).forEach(b => { const n = b.indexOf('\n'); hedef[b.slice(0, n).trim()] = b.slice(n + 1).trim(); });
     for (const f of ['nasil.txt', 'nasil2.txt']) { try { bol(await fetch(f).then(r => r.text()), 'NASIL', nasil); } catch (e) {} }
     try { bol(await fetch('ornek.txt').then(r => r.text()), 'EK', ek); } catch (e) {}
+    try { bol(await fetch('cikti.txt').then(r => r.text()), 'CIKTI', cikti); } catch (e) {}
+    try { const cs_ = await fetch('/api/calistir', { headers: { 'X-Atolye': '1' } }).then(r => r.json()); calisir = new Set(cs_.destek); ornekOk = new Set(cs_.ornek || []); } catch (e) {}
     konular = konuParse(await fetch('konu.txt').then(r => r.text()).catch(() => ''));
     const parcalar = await Promise.all(['egzersiz1.txt', 'egzersiz2.txt', 'egzersiz3.txt'].map(f => fetch(f).then(r => { if (!r.ok) throw new Error(f); return r.text(); })));
     labs = egzParse(parcalar.join('\n'));

@@ -284,46 +284,58 @@ Evet, çok belgeli ACID transaction replica set üzerinde desteklenir; ama tek b
 
 §KONU 05
 ## Ne öğreniyorsun?
-RabbitMQ = **mesaj kuyruğu (message broker)**. Bir servis iş bırakır, başka servis sırayla alıp işler. Yavaş/hata verebilecek işleri **asenkron** yapmanı sağlar.
+RabbitMQ = **mesaj kuyruğu (message broker)**: iki programın arasına konan **posta kutusu**. Bir servis işi kutuya bırakır, öteki **kendi hızında** alıp işler. Yavaş ya da hata verebilecek işleri (e-posta, rapor, AI çağrısı) arka plana atmanın standart yolu.
 
-## Akış
+## Akış (ezberle)
 ```
-Producer → Exchange → (binding/routing key) → Queue → Consumer
- (gönderen)  (dağıtıcı)                      (sıra)    (işleyen)
+Producer ──► Exchange ──(binding)──► Queue ──► Consumer
+(gönderen)   (dağıtıcı)              (sıra)     (işleyen)
 ```
-- **Producer** mesajı **exchange**'e bırakır, kuyruğa doğrudan değil.
-- **Exchange** routing key'e göre kuyruğa yönlendirir. Tipleri:
-  - `direct`: key tam eşleşirse • `fanout`: herkese kopya • `topic`: desen (`siparis.*`)
-- **Consumer** işini bitirince **ack** verir. Ack gelmezse mesaj başkasına/yeniden verilir.
+- **Producer** mesajı kuyruğa değil **exchange**'e bırakır.
+- **Exchange** kurallara (**binding**) ve mesajın **routing key**'ine bakıp kuyruğa yönlendirir.
+- **Queue** mesajı bekletir. **Durable** ise RabbitMQ yeniden başlasa da kalır.
+- **Consumer** işini bitirince **ack** verir. Ack gelmezse mesaj kuyruğa geri döner: iş kaybolmaz.
 
-## Neden kuyruk?
-- API hızlı cevap verir, ağır iş arkada yapılır (e-posta, rapor, AI çağrısı).
-- Tüketici çökse mesaj **kaybolmaz** (durable kuyruk).
-- Yük artınca consumer sayısını artırırsın.
+## Exchange tipleri
+| Tip | Ne yapar | Örnek |
+|---|---|---|
+| `direct` | routing key **birebir** eşleşirse | `kargo` → kargo kuyruğu |
+| `fanout` | bağlı **tüm** kuyruklara kopya, anahtara bakmaz | "kullanıcı kaydoldu" → e-posta + istatistik |
+| `topic` | desen: `*` = 1 kelime, `#` = 0+ kelime | `*.hata`, `odeme.#` |
+| `headers` | mesaj başlığına göre | nadir |
+
+Varsayılan exchange (adı boş / `amq.default`): mesaj, adı routing key ile aynı olan kuyruğa gider.
+
+## Komutlar (rabbitmqadmin)
+```
+rabbitmqadmin declare queue --name atolye.siparis --durable true
+rabbitmqadmin declare exchange --name atolye.siparisler --type direct
+rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
+rabbitmqadmin publish message --exchange atolye.siparisler --routing-key kargo --payload paket-1
+rabbitmqadmin get messages --queue atolye.kargo --ack-mode ack_requeue_true
+```
+`ack_requeue_true` = bak ve geri koy · `ack_requeue_false` = al ve sil · `reject_requeue_false` = reddet (ölü mektup).
 
 ## Hata yönetimi: retry + dead-letter
-1. İşleme başarısız → **yeniden dene** (aralıklı: 1sn, 5sn, 30sn).
-2. Hâlâ başarısız → mesaj **dead-letter queue**'ya gider; kaybolmaz, sonra incelersin.
-```json
-{ "durable": true, "arguments": { "x-dead-letter-exchange": "atolye.olu" } }
+1. İşleme başarısız → **yeniden dene** (aralıklı: 1 sn, 5 sn, 30 sn...).
+2. Hâlâ başarısız ya da süre doldu → mesaj **dead-letter queue**'ya (ölü mektup kutusu) gider; kaybolmaz, sonra incelersin. RabbitMQ nedenini başlığa yazar: `rejected`, `expired`, `maxlen`.
+```
+--arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'
 ```
 
-## MassTransit ile C#
+## C# ile
+- **RabbitMQ.Client** (düşük seviye): bağlantı → kanal → kuyruk → `AsyncEventingBasicConsumer` → `BasicConsumeAsync` → `BasicAckAsync`. Her şeyi sen yazarsın.
+- **MassTransit** (projede kullanılan): sen yalnızca `record` mesaj + `IConsumer<T>` yazarsın; ack, retry, kuyruk kurulumu otomatik.
 ```csharp
-public record SiparisAlindi(Guid SiparisId);
-
 public class SiparisConsumer : IConsumer<SiparisAlindi>
 {
-    public async Task Consume(ConsumeContext<SiparisAlindi> ctx)
-    {
-        // iş yap; hata fırlatırsan retry devreye girer. Başarılıysa otomatik ack.
-    }
+    public async Task Consume(ConsumeContext<SiparisAlindi> ctx) { /* iş yap; hata fırlat → retry */ }
 }
 ```
-**Altın kural:** hatayı `try/catch` ile **yutma** — sistem "başarılı" sanır, mesaj sessizce kaybolur.
+**Altın kural:** hatayı `try/catch` ile **yutma**; sistem "başarılı" sanır, mesaj sessizce kaybolur.
 
 ## Sık hatalar
-Yanlış routing key (mesaj sessizce düşer) • hata yutmak • sonsuz retry (zehirli mesaj kuyruğu tıkar) • kuyruğu `durable` yapmamak.
+Yanlış routing key / bağ yok (mesaj **sessizce kaybolur**) • ack'i unutmak (mesajlar geri döner, iş iki kez yapılır) • hata yutmak • sonsuz retry (zehirli mesaj kuyruğu tıkar) • kuyruğu `durable` yapmamak.
 
 §SORU 05 | Neden doğrudan HTTP yerine kuyruk?
 Gevşek bağlılık ve dayanıklılık: alıcı kapalı/yavaşken mesaj kuyrukta bekler, kaybolmaz. Gönderen beklemez, yük dalgalanması tamponlanır, consumer'lar bağımsız ölçeklenir.
