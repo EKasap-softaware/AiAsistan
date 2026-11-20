@@ -40,4 +40,15 @@ function egzKontrol(adim, cevap) {
   const sonuc = adim.k.map(k => ({ ad: k.ad, ok: !!k.test(s), ipucu: k.ipucu }));
   return { gecti: sonuc.length > 0 && sonuc.every(x => x.ok), sonuc };
 }
-if (typeof module !== 'undefined') module.exports = { egzParse, egzKontrol };
+// Konu anlatımı + ek mülakat soruları:  §KONU NN (markdown)  /  §SORU NN | soru (ardından cevap)
+function konuParse(metin) {
+  const r = {}; let cur = null, soru = null, m;
+  for (const ham of metin.split(/\r?\n/)) {
+    if ((m = ham.match(/^§KONU\s+(\d\d)\s*$/))) { cur = r[m[1]] = r[m[1]] || { konu: '', sorular: [] }; soru = null; continue; }
+    if ((m = ham.match(/^§SORU\s+(\d\d)\s*\|\s*(.+)$/))) { cur = r[m[1]] = r[m[1]] || { konu: '', sorular: [] }; soru = { s: m[2], c: '' }; cur.sorular.push(soru); continue; }
+    if (soru) soru.c += ham + '\n'; else if (cur) cur.konu += ham + '\n';
+  }
+  for (const k in r) { r[k].konu = r[k].konu.trim(); r[k].sorular.forEach(q => q.c = q.c.trim()); }
+  return r;
+}
+if (typeof module !== 'undefined') module.exports = { egzParse, egzKontrol, konuParse };

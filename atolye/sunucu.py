@@ -93,6 +93,11 @@ class Isleyici(BaseHTTPRequestHandler):
         if p == "/api/durum":
             t = tamamlananlar()
             return self._json({"tamam": t, "guncel": guncel(t), "labler": [{"id": i, "ad": a} for i, a in LABLER]})
+        if p == "/api/kayit":     # web sayfasının ilerlemesi (tarayıcı verisi silinse de kaybolmasın)
+            try:
+                return self._json(json.loads((A / ".web-ilerleme.json").read_text("utf-8")))
+            except Exception:
+                return self._json({})
         m = re.fullmatch(r"/api/lab/(\d\d)", p)
         if m:
             i = m.group(1)
@@ -121,6 +126,18 @@ class Isleyici(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._guvenli(True):
             return
+        if self.path.split("?")[0] == "/api/kayit":
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 2_000_000:
+                return self._json({"hata": "çok büyük"}, 413)
+            try:
+                veri = json.loads(self.rfile.read(n).decode("utf-8"))
+                if not isinstance(veri, dict):
+                    raise ValueError
+            except Exception:
+                return self._json({"hata": "geçersiz"}, 400)
+            (A / ".web-ilerleme.json").write_text(json.dumps(veri, ensure_ascii=False), "utf-8")
+            return self._json({"ok": True})
         m = re.fullmatch(r"/api/dogrula/(\d\d)", self.path.split("?")[0])
         if not m or m.group(1) not in IDLER:
             return self._json({"hata": "bulunamadı"}, 404)

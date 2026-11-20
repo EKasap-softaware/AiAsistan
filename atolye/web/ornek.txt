@@ -1,0 +1,683 @@
+§EK 01-0
+**Örnek A — `Musteri`:**
+```csharp
+public class Musteri
+{
+    public int Id { get; set; }
+    public string AdSoyad { get; set; } = null!;   // zorunlu metin
+    public string? Telefon { get; set; }           // ? = boş olabilir (NULL)
+    public bool Aktif { get; set; } = true;        // varsayılan: true
+}
+```
+**Örnek B — `Siparis`:**
+```csharp
+public class Siparis
+{
+    public int Id { get; set; }
+    public decimal Tutar { get; set; }             // para için decimal kullan
+    public DateTime Tarih { get; set; } = DateTime.UtcNow;
+}
+```
+Kalıp: `public TİP İsim { get; set; }` + gerekirse `= varsayılan;`. Boş olabilirse tipin sonuna `?`.
+
+§EK 01-1
+**Örnek A — fiyat kontrolü:**
+```csharp
+if (fiyat < 0)
+    throw new ArgumentException("Fiyat negatif olamaz.", nameof(fiyat));
+```
+**Örnek B — liste boşsa:**
+```csharp
+if (kalemler == null || kalemler.Count == 0)
+    throw new ArgumentException("En az bir kalem gerekli.", nameof(kalemler));
+```
+**Örnek C — kaydetme kalıbı:**
+```csharp
+var musteri = new Musteri { AdSoyad = ad.Trim() };
+await depo.EkleAsync(musteri, ct);
+return musteri;
+```
+Kalıp: **önce kurallar (`throw`), en sonda kaydet**. Kurallar geçmezse kaydetme satırına hiç gelinmez.
+
+§EK 01-2
+**Örnek A — başka tablo:**
+```csharp
+public DbSet<Musteri> Musteriler => Set<Musteri>();
+// OnModelCreating içinde:
+mb.Entity<Musteri>().Property(m => m.AdSoyad).HasMaxLength(100);
+```
+**Örnek B — zorunlu + benzersiz:**
+```csharp
+mb.Entity<Musteri>().Property(m => m.AdSoyad).IsRequired().HasMaxLength(100);
+mb.Entity<Musteri>().HasIndex(m => m.Telefon).IsUnique();   // aynı telefon iki kez olamaz
+```
+Kalıp: `mb.Entity<T>().Property(x => x.Alan).…` zinciri; her `.` bir kural ekler.
+
+§EK 01-3
+**Örnek A — yeni migration:**
+```bash
+dotnet ef migrations add MusteriEkle -p src/Asistan.Infrastructure -s src/Asistan.Api
+```
+**Örnek B — geri al (henüz uygulanmadıysa):**
+```bash
+dotnet ef migrations remove -p src/Asistan.Infrastructure -s src/Asistan.Api
+```
+**Örnek C — belli sürüme geri dön (uygulandıysa):**
+```bash
+dotnet ef database update OncekiMigrationAdi -p src/Asistan.Infrastructure -s src/Asistan.Api
+```
+Kalıp: ad her seferinde **ne değiştiğini** anlatır (`EtiketEkle`, `MusteriTelefonEkle`).
+
+§EK 01-4
+**Örnek A — geçerli girdi → kaydeder:**
+```csharp
+[Fact]
+public async Task OlusturAsync_GecerliAd_KaydederVeDondurur()
+{
+    var etiket = await _servis.OlusturAsync("  yeni  ");
+
+    etiket.Ad.Should().Be("yeni");                       // Trim çalıştı mı?
+    _depo.Verify(d => d.EkleAsync(etiket, It.IsAny<CancellationToken>()), Times.Once);
+}
+```
+**Örnek B — birden çok değerle tek test:**
+```csharp
+[Theory]
+[InlineData("")]
+[InlineData("   ")]
+public async Task OlusturAsync_BosVeyaBosluk_HataVerir(string ad)
+{
+    var islem = () => _servis.OlusturAsync(ad);
+    await islem.Should().ThrowAsync<ArgumentException>();
+}
+```
+`Times.Once` = tam bir kez çağrıldı, `Times.Never` = hiç çağrılmadı. `[Theory]` aynı testi farklı girdilerle çalıştırır.
+
+§EK 01-5
+**Örnek A:**
+```csharp
+services.AddScoped<IMusteriDeposu, MusteriDeposu>();
+```
+**Örnek B — hangi ömür?**
+```csharp
+services.AddSingleton<IOnbellek, Onbellek>();       // uygulama boyunca TEK örnek
+services.AddScoped<IEtiketServisi, EtiketServisi>(); // her HTTP isteğinde bir tane
+services.AddTransient<IRaporUretici, RaporUretici>();// her istenişte yeni
+```
+Kural: **DbContext kullanan her şey Scoped**.
+
+§EK 02-0
+**Örnek — ikinci commit ve geçmiş:**
+```bash
+echo "ikinci satir" >> notlar.txt   # >> sona ekler, > üzerine yazar
+git add notlar.txt
+git commit -m "fix: notlara ikinci satir eklendi"
+git log --oneline                   # kısa geçmiş
+git status                          # durum nedir?
+```
+Commit tipleri: `feat` yeni özellik, `fix` hata düzeltme, `docs` dokümantasyon, `test` test, `chore` bakım, `ci` pipeline, `refactor` yeniden düzen.
+
+§EK 02-1
+**Örnek — farklı dal adı:**
+```bash
+git switch -c duzeltme/giris-hatasi
+echo "duzeltildi" > hata.txt
+git add hata.txt
+git commit -m "fix: giris hatasi duzeltildi"
+git switch main
+git merge --no-ff duzeltme/giris-hatasi
+git branch -d duzeltme/giris-hatasi   # işi biten dalı sil
+```
+Dal adı kalıbı: `ozellik/…` yeni iş, `duzeltme/…` hata, `acil/…` acil yama. `git branch` ile dalları listele.
+
+§EK 02-2
+**Örnek — farklı çakışma, "birini seç":**
+```
+<<<<<<< HEAD
+port: 8080
+=======
+port: 9090
+>>>>>>> ozellik/c
+```
+Yeni sürüm kalsın istiyorsan sonuç:
+```
+port: 9090
+```
+**Yani:** sadece bir taraf kalacaksa öbürünü ve işaretleri sil. Çözünce: `git add dosya` → `git commit`. İptal etmek için `git merge --abort`.
+
+§EK 02-3
+**Örnek A — son commit'i geri al:**
+```bash
+git revert HEAD --no-edit
+```
+**Örnek B — dosyayı commit'ten önce eski haline getir:**
+```bash
+git restore notlar.txt
+```
+**Örnek C — staging'e eklediğini geri çek:**
+```bash
+git restore --staged notlar.txt
+```
+Hangisi? Commit'lendi + paylaşıldı → `revert`. Henüz commit yok → `restore`.
+
+§EK 02-4
+**Örnek — birden çok kural:**
+```bash
+printf ".env\nbin/\nobj/\n*.log\n" > .gitignore
+git add .gitignore
+git commit -m "chore: derleme ciktilari ve loglar ignore edildi"
+git tag -a v1.0.0 -m "ilk kararli surum"
+git tag                       # etiketleri listele
+```
+`.gitignore` satırları: dosya adı, klasör (`bin/`) veya desen (`*.log`).
+
+§EK 03-0
+**Örnek A — Node uygulaması:**
+```dockerfile
+FROM node:22-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci                    # bağımlılıklar ÖNCE (önbellek için)
+COPY . .
+USER node
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+**Örnek B — .NET (iki aşamalı):**
+```dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /out
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+COPY --from=build /out .
+USER app
+ENTRYPOINT ["dotnet", "Asistan.Api.dll"]
+```
+Kalıp: `FROM` → `WORKDIR` → `COPY` → `RUN` → `USER` → `EXPOSE` → `CMD`.
+
+§EK 03-1
+**Örnek — .NET projesi için:**
+```
+bin
+obj
+.vs
+.git
+.env
+*.user
+```
+**Örnek — Node için:**
+```
+node_modules
+.git
+.env
+npm-debug.log
+```
+Kural: derleme çıktısı, bağımlılık klasörü, `.git` ve **her türlü sır** dışarıda kalsın.
+
+§EK 03-2
+**Örnek — web sunucusu:**
+```bash
+docker build -t benim-web .
+docker run -d -p 8080:80 --name web1 benim-web
+docker ps                          # çalışanlar
+docker logs -f web1                # canlı log (Ctrl+C çıkar)
+docker exec -it web1 sh            # içine terminal ile gir
+docker stop web1 && docker rm web1 # düzgün durdur + sil
+docker images                      # imajları listele
+```
+`-p 8080:80` = bilgisayarın 8080'i → konteynerin 80'i. Tarayıcıda `localhost:8080`.
+
+§EK 03-3
+**Örnek — API + veritabanı:**
+```yaml
+services:
+  api:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      DB_HOST: db            # servis adı!
+    depends_on: [db]
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ornek-parola
+    volumes:
+      - dbverisi:/var/lib/postgresql/data
+volumes:
+  dbverisi:
+```
+Komutlar: `docker compose up -d` (kaldır), `docker compose logs api`, `docker compose down` (kapat, veri durur).
+
+§EK 03-4
+**Örnek:** servis adı `rabbitmq`, port `5672` → `rabbitmq:5672`.
+**Örnek:** servis adı `redis`, port `6379` → `redis:6379`.
+Kalıp: **`servis-adı:iç-port`**. Dışarıdan (bilgisayarından) bağlanırsan `localhost:DIŞ-port` olur, konteynerler arası ise servis adı.
+
+§EK 04-0
+**Örnek — tek belge:**
+```javascript
+db = db.getSiblingDB('atolye')
+db.musteriler.insertOne({ ad: 'Ali', yas: 30, sehir: 'Ankara' })
+```
+**Örnek — iç içe belge:**
+```javascript
+db.urunler.insertOne({
+  ad: 'kalem',
+  fiyat: 5,
+  etiketler: ['ofis', 'yazi'],        // dizi
+  uretici: { ad: 'ABC', ulke: 'TR' }  // iç içe nesne
+})
+```
+Hepsini görmek için: `db.urunler.find()`.
+
+§EK 04-1
+**Örnek A — eşitlik ve VEYA:**
+```javascript
+db.siparisler.find({ durum: 'tamamlandi' })
+db.siparisler.find({ $or: [ { durum: 'bekliyor' }, { tutar: { $gt: 200 } } ] })
+```
+**Örnek B — aralık ve limit:**
+```javascript
+db.siparisler.find({ tutar: { $gte: 50, $lte: 150 } }).sort({ tutar: 1 }).limit(5)
+```
+**Örnek C — sadece bazı alanlar:**
+```javascript
+db.siparisler.find({}, { musteri: 1, tutar: 1, _id: 0 })
+```
+Operatörler: `$gt` büyük, `$gte` büyük-eşit, `$lt` küçük, `$lte` küçük-eşit, `$ne` eşit değil, `$in` listede.
+
+§EK 04-2
+**Örnek A — tek alan:**
+```javascript
+db.musteriler.createIndex({ sehir: 1 })
+```
+**Örnek B — benzersiz:**
+```javascript
+db.musteriler.createIndex({ eposta: 1 }, { unique: true })
+```
+**Örnek C — kontrol et:**
+```javascript
+db.musteriler.getIndexes()
+db.musteriler.find({ sehir: 'Ankara' }).explain('executionStats')   // IXSCAN mi?
+```
+
+§EK 04-3
+**Örnek — oturumlar 30 dakika sonra silinsin:**
+```javascript
+db.oturumlar.createIndex({ olusturma: 1 }, { expireAfterSeconds: 1800 })
+db.oturumlar.insertOne({ kullanici: 'ali', olusturma: new Date() })   // Date olmalı!
+```
+Süre çevirisi: 1 dk = 60, 1 saat = 3600, 1 gün = 86400 saniye.
+
+§EK 04-4
+**Örnek A — şehir başına sayı:**
+```javascript
+db.musteriler.aggregate([
+  { $group: { _id: '$sehir', adet: { $sum: 1 } } },
+  { $sort: { adet: -1 } }
+])
+```
+**Örnek B — süz sonra topla:**
+```javascript
+db.siparisler.aggregate([
+  { $match: { durum: 'tamamlandi' } },
+  { $group: { _id: '$musteri', toplam: { $sum: '$tutar' }, ortalama: { $avg: '$tutar' } } }
+])
+```
+Aşamalar: `$match` süz, `$group` grupla, `$sort` sırala, `$limit` kırp, `$out` yaz.
+
+§EK 04-5
+**Örnek A — sayacı artır (atomik):**
+```javascript
+db.sayaclar.updateOne({ _id: 'ziyaret' }, { $inc: { sayi: 1 } }, { upsert: true })
+```
+**Örnek B — çoklu güncelleme:**
+```javascript
+db.siparisler.updateMany({ durum: 'bekliyor' }, { $set: { durum: 'iptal' } })
+```
+**Örnek C — alan sil:**
+```javascript
+db.siparisler.updateOne({ musteri: 'Ali' }, { $unset: { guncellenme: '' } })
+```
+`$set` değer ata, `$inc` sayıyı artır/azalt, `$unset` alanı sil.
+
+§EK 05-0
+**Örnek — süresi dolan mesaj da ölü kuyruğa gitsin:**
+```json
+{
+  "durable": true,
+  "arguments": {
+    "x-dead-letter-exchange": "siparis.olu",
+    "x-message-ttl": 60000
+  }
+}
+```
+`x-message-ttl` milisaniye: 60000 = 1 dakika. Anahtarlar çift tırnak, sayı tırnaksız.
+
+§EK 05-1
+**Örnek — farklı kuyruğa, JSON gövdeli mesaj:**
+```bash
+curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"siparis.kuyruk","payload":"{\"id\":1}","payload_encoding":"string"}'
+```
+**Kuyrukta kaç mesaj var?**
+```bash
+curl -u kullanici:parola http://localhost:15672/api/queues/%2F/siparis.kuyruk
+```
+Payload içinde çift tırnak yazacaksan başına `\` koy.
+
+§EK 05-2
+**Örnek — e-posta gönderen consumer:**
+```csharp
+public record KullaniciKaydoldu(Guid Id, string Eposta);
+
+public class EpostaConsumer(IEpostaServisi eposta) : IConsumer<KullaniciKaydoldu>
+{
+    public async Task Consume(ConsumeContext<KullaniciKaydoldu> context)
+    {
+        await eposta.GonderAsync(context.Message.Eposta, "Hoş geldin");
+        // hata olursa YUTMA: fırlat, retry devreye girsin
+    }
+}
+```
+Kayıt: `x.AddConsumer<EpostaConsumer>();`. Mesaj gönderme: `await publishEndpoint.Publish(new KullaniciKaydoldu(id, eposta));`
+
+§EK 05-3
+**Örnek A — sabit aralık:**
+```csharp
+e.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));   // 3 kez, 5 sn arayla
+```
+**Örnek B — üstel (denenen):**
+```csharp
+e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(5)));
+```
+**Örnek C — belli hatayı deneme:**
+```csharp
+e.UseMessageRetry(r => { r.Interval(3, TimeSpan.FromSeconds(2)); r.Ignore<ArgumentException>(); });
+```
+Geçici hata (ağ) → retry. Kalıcı hata (geçersiz veri) → retry etme.
+
+§EK 05-4
+| İş | Tip |
+|---|---|
+| Olayı **tüm** abonelere ilet (e-posta + istatistik) | **fanout** |
+| Mesajı tek, adı eşleşen kuyruğa ilet | **direct** |
+| `siparis.*` / `log.hata.#` gibi desenle | **topic** |
+| Başlık değerine göre | **headers** |
+
+Cevap yazarken tek kelime yeter: `tip: fanout`.
+
+§EK 06-0
+**Örnek — iki takma ad:**
+```yaml
+model_list:
+  - model_name: hizli
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: akilli
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 1000
+```
+Kodda `hizli` veya `akilli` yazarsın; modeli değiştirmek config'te tek satır.
+
+§EK 06-1
+**Örnek — daha fazla ayar:**
+```yaml
+litellm_settings:
+  drop_params: true
+  request_timeout: 60
+  num_retries: 2            # hata olursa 2 kez daha dene
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+```
+Config değişince: `docker compose restart litellm`.
+
+§EK 06-2
+**Örnek — model listesini sor:**
+```bash
+curl http://localhost:4000/v1/models -H "Authorization: Bearer $LITELLM_MASTER_KEY"
+```
+**Örnek — sistem mesajı ve sıcaklık:**
+```bash
+curl http://localhost:4000/v1/chat/completions -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" -d '{"model":"atolye","temperature":0,"messages":[{"role":"system","content":"Kısa cevap ver."},{"role":"user","content":"Başkent neresi?"}]}'
+```
+Cevapta `choices[0].message.content` yazı, `usage` token sayısıdır.
+
+§EK 06-3
+**Benzetme:** otel odası anahtarı (master key) ile bankadaki kasa anahtarı (Anthropic). Misafire (uygulamaya) oda anahtarı verilir; kasa anahtarı sadece resepsiyonda (LiteLLM) durur.
+
+Örnek cevap: "Uygulamaya LiteLLM master key verilir; Anthropic anahtarı yalnızca LiteLLM'in ortam değişkeninde durur."
+
+§EK 07-0
+**Örnek A — ilk N:**
+```csharp
+public static IReadOnlyList<string> IlkN(IReadOnlyList<string> liste, int n)
+{
+    if (n <= 0) return Array.Empty<string>();
+    return liste.Take(n).ToList();
+}
+```
+**Örnek B — manuel (Skip ile son N):**
+```csharp
+return liste.Skip(Math.Max(0, liste.Count - n)).ToList();
+```
+`Take` ilk n, `TakeLast` son n, `Skip` baştan atla.
+
+§EK 07-1
+**Örnek A:**
+```csharp
+public static bool SayfaDoldu(int adet, int sayfaBoyu) => adet >= sayfaBoyu;
+```
+**Örnek B — gövde ile yaz:**
+```csharp
+public static bool OzetGerekliMi(int mesajSayisi, int esik)
+{
+    return mesajSayisi >= esik;
+}
+```
+`=>` ile satır içi yazım, `{ return …; }` ile blok yazım **aynı şey**.
+
+§EK 07-2
+**Örnek — kısa filtre (tekrar ve boş):**
+```csharp
+public static IReadOnlyList<string> Temizle(IEnumerable<string> girdi)
+{
+    var gorulen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var sonuc = new List<string>();
+    foreach (var x in girdi)
+    {
+        var s = (x ?? "").Trim();
+        if (s.Length == 0) continue;     // boşu atla
+        if (gorulen.Add(s)) sonuc.Add(s); // ilk görüleni ekle
+    }
+    return sonuc;
+}
+```
+`HashSet.Add` → yeni eleman ise `true`, zaten varsa `false` döner.
+
+§EK 07-3
+**Örnek — eşik testi (sınırlar):**
+```csharp
+[Theory]
+[InlineData(19, 20, false)]   // eşiğin altı
+[InlineData(20, 20, true)]    // tam eşik
+[InlineData(21, 20, true)]    // eşiğin üstü
+public void OzetGerekliMi_SinirDegerleri(int sayi, int esik, bool beklenen)
+    => KonusmaPenceresi.OzetGerekliMi(sayi, esik).Should().Be(beklenen);
+```
+Sınır testi = tam eşik, bir altı, bir üstü.
+
+§EK 08-0
+**Örnek A — çeviri asistanı:**
+```
+Sen bir çevirmensin. Verilen metni İngilizceye çevir, sadece çeviriyi yaz.
+
+Metin: {metin}
+```
+**Örnek B — bilgiye dayalı cevap:**
+```
+Sadece aşağıdaki bilgiye dayanarak cevap ver. Bilmiyorsan "bilmiyorum" de.
+
+Bilgi: {bilgi}
+Soru: {soru}
+```
+Kullanıcı girdisi **ayrı değişkende** kalsın, talimat metnine karışmasın.
+
+§EK 08-1
+**Örnek — başka akış ve soru:**
+```bash
+curl -X POST "http://localhost:7860/api/v1/run/XYZ789" -H "Content-Type: application/json" -H "x-api-key: $LANGFLOW_API_KEY" -d '{"input_value":"Fatura nasıl kesilir?","input_type":"chat","output_type":"chat"}'
+```
+Yanıt JSON'dur; cevap metni `outputs` içinde gelir.
+
+§EK 08-2
+**Örnek A:** LangFlow'dan `mongo` servisine: `mongodb://mongo:27017`.
+**Örnek B:** LangFlow'dan `rabbitmq` servisine: `amqp://rabbitmq:5672`.
+**Örnek C:** tarayıcıdan (bilgisayarından) LiteLLM'e: `http://localhost:4000` (çünkü dışarıdasın).
+Kural: konteynerin **içinden** servis adı, **dışarıdan** localhost.
+
+§EK 08-3
+**Örnek akış (adım adım):**
+1. LangFlow → Settings → **Global Variables** → Add.
+2. Ad: `LITELLM_KEY`, Tür: **Credential**, Değer: anahtar.
+3. Bileşende anahtar alanına bu değişkeni bağla.
+4. Akışı dışa aktar → JSON'da sadece `LITELLM_KEY` adı görünür, anahtar yok.
+
+§EK 09-0
+**Örnek A — sadece PR:**
+```yaml
+on:
+  pull_request:
+    branches: [main]
+```
+**Örnek B — elle ve zamanlı çalıştır:**
+```yaml
+on:
+  workflow_dispatch:        # Actions sekmesinden elle
+  schedule:
+    - cron: "0 6 * * *"     # her gün 06:00 UTC
+```
+**Örnek C — sadece belli klasör değişince:**
+```yaml
+on:
+  push:
+    paths: ["src/**"]
+```
+
+§EK 09-1
+**Örnek — iki job (build sonra test):**
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "derleniyor"
+  test:
+    needs: build            # build bitmeden başlamaz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "test ediliyor"
+```
+`needs:` sıra kurar. Yoksa joblar **paralel** çalışır.
+
+§EK 09-2
+**Örnek — Node için aynı kalıp:**
+```yaml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+```
+Kalıp: **kur → bağımlılık → derle → test**.
+
+§EK 09-3
+**Örnek — matrix (iki sürümde test):**
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        dotnet: [8.0.x, 9.0.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+      - run: dotnet test
+```
+Bir tanım, iki paralel çalışma.
+
+§EK 09-4
+**Örnek A — secret'ı komutta kullan:**
+```yaml
+      - run: curl -H "Authorization: Bearer $TOKEN" https://api.ornek.com/durum
+        env:
+          TOKEN: ${{ secrets.API_TOKEN }}
+```
+**Örnek B — secret'ı ekleme yeri:** GitHub depo → Settings → Secrets and variables → Actions → New repository secret.
+Kural: `${{ secrets.… }}` yaz; gerçek değeri YAML'a **asla** yazma.
+
+§EK 10-0
+**Örnek — commit mesajı skill'i:**
+```
+---
+name: commit-yaz
+description: Kullanıcı bir değişikliği commit etmek istediğinde kullan. Conventional Commits biçiminde kısa mesaj üretir.
+---
+1. `git diff --staged` ile değişikliği oku.
+2. Tipi seç: feat, fix, docs, test, chore.
+3. `tip: kısa açıklama` biçiminde tek satır yaz.
+```
+`description`'a "ne zaman kullanılır" yazmazsan Claude skill'i seçemez.
+
+§EK 10-1
+**Örnek A — `/acikla`:**
+```
+Şu kodu junior bir geliştiriciye anlatır gibi adım adım açıkla: $ARGUMENTS
+```
+**Örnek B — `/test-oner`:**
+```
+$ARGUMENTS dosyasını oku ve eksik kalan 5 test senaryosunu öner.
+```
+Dosya `.claude/commands/acikla.md` olursa komut `/acikla dosya.cs` olur.
+
+§EK 10-2
+**Örnek — Kod stili bölümü:**
+```markdown
+## Kod stili
+- Sınıf ve metot adları Türkçe, PascalCase.
+- Her public metoda en az bir test yaz.
+- Sır koda yazılmaz; ortam değişkeni kullan.
+```
+İyi kural: kısa, emir kipi, doğrulanabilir.
+
+§EK 10-3
+**Örnek — iki sunucu:**
+```json
+{
+  "mcpServers": {
+    "dosyalar": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+    }
+  }
+}
+```
+İki sunucu aynı `mcpServers` içinde, virgülle ayrılır. Token her zaman `${DEĞİŞKEN}`.

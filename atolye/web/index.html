@@ -64,6 +64,16 @@ textarea:focus{outline:2px solid var(--acc)}
 .soru .cevap{padding:0 0 12px;color:var(--ink)}
 .kilitkutu{text-align:center;padding:70px 20px;color:var(--soft)}
 .kilitkutu b{font-size:44px;display:block}
+details.nasil{margin:12px 0 4px;border:1px dashed var(--acc);border-radius:10px;padding:0 14px;background:var(--chip)}
+details.nasil>summary{cursor:pointer;padding:10px 0;font-weight:700;color:var(--acc)}
+details.nasil .md{padding-bottom:10px}
+.devam{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--chip);border:1px solid var(--acc);border-radius:12px;padding:10px 16px;margin:6px 0 14px}
+.devam b{color:var(--acc)}.devam .btn{padding:7px 16px;margin-left:auto}
+details.konu{background:var(--panel);border:2px solid var(--acc);border-radius:14px;margin:12px 0}
+details.konu>summary{cursor:pointer;padding:14px 18px;font-weight:700;font-size:17px}
+.konu .md h2{font-size:18px;margin:1.2em 0 .3em}.konu .md table{border-collapse:collapse;margin:8px 0;font-size:14.5px;display:block;overflow:auto}
+.konu .md th,.konu .md td{border:1px solid var(--line);padding:6px 10px;text-align:left}.konu .md th{background:var(--chip)}
+.konu .md blockquote{margin:8px 0;padding:6px 14px;border-left:4px solid var(--warn);background:var(--chip);border-radius:0 8px 8px 0}
 @media (max-width:860px){.duzen{grid-template-columns:1fr}nav{position:static;max-height:none;display:flex;gap:6px;overflow:auto;padding:10px}nav button{width:auto;white-space:nowrap}main{padding:14px 14px 60px}}
 </style>
 </head>
@@ -77,9 +87,15 @@ textarea:focus{outline:2px solid var(--acc)}
 <script>
 const $ = s => document.querySelector(s);
 const LS = 'atolye-egz-v1';
-let labs = [], st = { adim: {}, taslak: {}, deneme: {} }, aktif = null;
+let labs = [], st = { adim: {}, taslak: {}, deneme: {}, konu: {}, t: 0 }, aktif = null, konular = {}, nasil = {}, ek = {};
 try { Object.assign(st, JSON.parse(localStorage.getItem(LS) || '{}')); } catch (e) {}
-const kaydet = () => { try { localStorage.setItem(LS, JSON.stringify(st)); } catch (e) {} };
+let _sync = 0;
+const kaydet = () => {
+  st.t = Date.now(); st.konu = st.konu || {};
+  try { localStorage.setItem(LS, JSON.stringify(st)); } catch (e) {}
+  clearTimeout(_sync);   // sunucuya da yaz: tarayıcı verisi silinse bile ilerleme kaybolmasın
+  _sync = setTimeout(() => fetch('/api/kayit', { method: 'POST', headers: { 'X-Atolye': '1' }, body: JSON.stringify(st) }).catch(() => {}), 600);
+};
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const md = s => (window.marked && window.DOMPurify) ? DOMPurify.sanitize(marked.parse(s, { gfm: true })) : esc(s).replace(/\n/g, '<br>');
 
@@ -112,17 +128,37 @@ function adimHtml(l, a, i) {
     <div class="icerik">
       <div class="md">${md(a.anlat)}</div>
       <h4>Örnek</h4><pre><code>${esc(a.ornek)}</code></pre>
+      ${nasil[k] ? `<details class="nasil" ${acik ? 'open' : ''}><summary>🧩 Nasıl yazılır? (parça parça — takılırsan aç)</summary><div class="md">${md(nasil[k])}</div></details>` : ''}
+      ${ek[k] ? `<details class="nasil ek"><summary>📚 Başka örnekler (görevden önce bunlara bak)</summary><div class="md">${md(ek[k])}</div></details>` : ''}
       <div class="gorev md"><b>Görev:</b> ${md(a.gorev)}</div>
       <textarea spellcheck="false" rows="${Math.max(7, Math.min(22, (taslak.split('\n').length) + 3))}">${esc(taslak)}</textarea>
       <div class="btnler">
         <button class="btn" data-act="kontrol">✔ Kontrol et <small>(Ctrl+Enter)</small></button>
-        <button class="btn ikinci" data-act="cozum" ${(st.deneme[k] || 0) >= 2 ? '' : 'disabled'}>👀 Çözümü göster</button>
+        <button class="btn ikinci" data-act="cozum">👀 Çözümü göster</button>
         <button class="btn ikinci" data-act="basa">↺ Başa al</button>
       </div>
       <div class="sonuc"></div>
     </div></details>`;
 }
 
+function konuHtml(l) {
+  const k = konular[l.id]; if (!k || !k.konu) return '';
+  const acik = !st.konu[l.id] && !l.adimlar.some((_, i) => adimBitti(l, i));
+  return `<details class="konu" ${acik ? 'open' : ''}><summary>📘 Önce konuyu öğren — ${esc(l.ad)} <small style="font-weight:400;color:var(--soft)">(≈5 dk okuma)</small></summary>
+    <div class="icerik md">${md(k.konu)}<div class="btnler"><button class="btn" data-act="okudum">Okudum, görevlere geç ↓</button></div></div></details>`;
+}
+function devamCiz() {
+  const el = $('#devam'); if (!el) return;
+  const n = guncelIdx(), l = labs[n], i = l.adimlar.findIndex((_, j) => !adimBitti(l, j));
+  if (i < 0) { el.innerHTML = '<div class="devam">🏆 <b>Tüm adımlar tamam.</b> Mülakat sorularını tekrar et.</div>'; return; }
+  const tam = labs.filter(x => labBitti(x)).length;
+  el.innerHTML = `<div class="devam">📍 <span><b>Kaldığın yer:</b> Seviye ${n + 1} · Adım ${i + 1}/${l.adimlar.length} — ${esc(l.adimlar[i].b)}<br><small style="color:var(--soft)">${tam}/10 seviye tamam · ilerleme otomatik kaydedilir</small></span>
+    <button class="btn" data-act="devam" data-id="${l.id}" data-i="${i}">Devam et →</button></div>`;
+}
+function adimaGit(i) {
+  const d = $('#main').querySelectorAll('details.adim')[i]; if (!d) return;
+  d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 function sec(id) {
   const n = labs.findIndex(l => l.id === id); if (n < 0) return;
   aktif = id; location.hash = 'lab-' + id; navCiz();
@@ -133,7 +169,10 @@ function sec(id) {
   }
   m.innerHTML = `<h1>Seviye ${n + 1} · ${esc(l.ad)}</h1><p class="ozet">${esc(l.ozet)}</p>
     <div class="gorsel"><img src="img/lab${l.id}.svg" alt="${esc(l.ad)} şeması"></div>
+    <div id="devam"></div>
+    ${konuHtml(l)}
     ${l.adimlar.map((a, i) => adimHtml(l, a, i)).join('')}<div id="bitis"></div>`;
+  devamCiz();
   m.querySelectorAll('pre').forEach(p => {
     if (p.closest('.sonuc')) return;
     const b = document.createElement('button'); b.className = 'kop'; b.textContent = 'Kopyala';
@@ -167,12 +206,14 @@ function kontrol(l, i, det) {
   } else if (st.deneme[k] >= 2) {
     det.querySelector('[data-act=cozum]').disabled = false;
   }
-  sonuc.innerHTML = html; kaydet(); navCiz(); bitisCiz(l, labs.indexOf(l));
+  sonuc.innerHTML = html; kaydet(); navCiz(); bitisCiz(l, labs.indexOf(l)); devamCiz();
 }
 
 $('#main').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   if (b.dataset.act === 'sonraki') { sec(b.dataset.id); return; }
+  if (b.dataset.act === 'devam') { if (aktif !== b.dataset.id) sec(b.dataset.id); adimaGit(Number(b.dataset.i)); return; }
+  if (b.dataset.act === 'okudum') { st.konu[aktif] = true; kaydet(); b.closest('details.konu').open = false; const l0 = labs.find(x => x.id === aktif); adimaGit(Math.max(0, l0.adimlar.findIndex((_, j) => !adimBitti(l0, j)))); return; }
   const det = b.closest('details.adim'); const l = labs.find(x => x.id === aktif); const i = Number(det.dataset.i);
   const a = l.adimlar[i], k = anahtar(l, i);
   if (b.dataset.act === 'kontrol') kontrol(l, i, det);
@@ -180,7 +221,7 @@ $('#main').addEventListener('click', e => {
   if (b.dataset.act === 'cozum') {
     if (st.adim[k] !== 'ok') { st.adim[k] = 'gor'; det.className = 'adim gor'; det.querySelector('.rozet').textContent = '👀'; }
     det.querySelector('.sonuc').innerHTML = `<div class="cozumkutu"><b>Referans çözüm</b> (karşılaştır, sonra kendin yeniden yaz):<pre><code>${esc(a.cozum)}</code></pre></div>`;
-    kaydet(); navCiz(); bitisCiz(l, labs.indexOf(l));
+    kaydet(); navCiz(); bitisCiz(l, labs.indexOf(l)); devamCiz();
   }
 });
 $('#main').addEventListener('keydown', e => {
@@ -193,12 +234,22 @@ $('#main').addEventListener('input', e => {
   const l = labs.find(x => x.id === aktif), i = Number(e.target.closest('details').dataset.i);
   st.taslak[anahtar(l, i)] = e.target.value; kaydet();
 });
-$('#sifirla').onclick = () => { if (confirm('Tüm ilerleme ve yazdıkların silinsin mi?')) { st = { adim: {}, taslak: {}, deneme: {} }; kaydet(); location.hash = ''; location.reload(); } };
+$('#sifirla').onclick = () => { if (confirm('Tüm ilerleme ve yazdıkların silinsin mi?')) { st = { adim: {}, taslak: {}, deneme: {}, konu: {}, t: 0 }; kaydet(); location.hash = ''; location.reload(); } };
 
 (async () => {
   try {
+    try {   // sunucudaki kayıt daha yeniyse onu kullan (tarayıcı verisi silinmişse ilerleme geri gelir)
+      const sv = await fetch('/api/kayit', { headers: { 'X-Atolye': '1' } }).then(r => r.json());
+      if (sv && sv.adim && (sv.t || 0) > (st.t || 0)) { Object.assign(st, sv); try { localStorage.setItem(LS, JSON.stringify(st)); } catch (e) {} }
+      else if (st.t) kaydet();
+    } catch (e) {}
+    const bol = (metin, ad, hedef) => metin.split(new RegExp('^§' + ad + '\\s+', 'm')).slice(1).forEach(b => { const n = b.indexOf('\n'); hedef[b.slice(0, n).trim()] = b.slice(n + 1).trim(); });
+    for (const f of ['nasil.txt', 'nasil2.txt']) { try { bol(await fetch(f).then(r => r.text()), 'NASIL', nasil); } catch (e) {} }
+    try { bol(await fetch('ornek.txt').then(r => r.text()), 'EK', ek); } catch (e) {}
+    konular = konuParse(await fetch('konu.txt').then(r => r.text()).catch(() => ''));
     const parcalar = await Promise.all(['egzersiz1.txt', 'egzersiz2.txt', 'egzersiz3.txt'].map(f => fetch(f).then(r => { if (!r.ok) throw new Error(f); return r.text(); })));
     labs = egzParse(parcalar.join('\n'));
+    labs.forEach(l => { const k = konular[l.id]; if (k) l.sorular = l.sorular.concat(k.sorular); });
   } catch (e) {
     $('#main').innerHTML = `<div class="kilitkutu"><b>⚠</b><p>İçerik yüklenemedi. Sayfayı <code>http://localhost:5300</code> adresinden aç (dosyaya çift tıklama çalışmaz).</p></div>`; return;
   }

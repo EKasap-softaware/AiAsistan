@@ -1,0 +1,205 @@
+§NASIL 01-0
+**Hedef:** `Etiket` sınıfı = tablonun C# hali. Sırayla yaz:
+
+1. Dosyanın ilk satırı (hazır): `namespace Asistan.Domain.Entities;` — sınıfın "adresi".
+2. Sınıf başlığı (hazır): `public class Etiket` + `{ }`.
+3. **Süslü parantezin içine 3 özellik**, her biri `public TİP Ad { get; set; }` kalıbında:
+   - `public int Id { get; set; }` → birincil anahtar (EF `Id`'yi otomatik anlar).
+   - `public string Ad { get; set; } = null!;` → boş olamayan metin (`= null!` "boş gelmeyecek" der).
+   - `public DateTime Olusturulma { get; set; } = DateTime.UtcNow;` → varsayılan değer = şu an (UTC).
+```csharp
+namespace Asistan.Domain.Entities;
+
+public class Etiket
+{
+    public int Id { get; set; }
+    public string Ad { get; set; } = null!;
+    public DateTime Olusturulma { get; set; } = DateTime.UtcNow;
+}
+```
+Her satır `;` ile biter. `{ get; set; }` kısmını ezberle: "oku ve yaz" demek.
+
+§NASIL 01-1
+**Hedef:** iş kuralları olan servis. Metodun içini 3 parçada yaz:
+
+1. **Kural 1 – boşsa reddet**
+```csharp
+if (string.IsNullOrWhiteSpace(ad))
+    throw new ArgumentException("Etiket adı boş olamaz.", nameof(ad));
+```
+2. **Kural 2 – çok uzunsa reddet** (önce `Trim()` ile baştaki/sondaki boşlukları at)
+```csharp
+if (ad.Trim().Length > 50)
+    throw new ArgumentException("Etiket adı en fazla 50 karakter olabilir.", nameof(ad));
+```
+3. **Kurallar geçtiyse: nesneyi kur, kaydet, döndür**
+```csharp
+var etiket = new Etiket { Ad = ad.Trim() };
+await depo.EkleAsync(etiket, ct);
+return etiket;
+```
+- `throw` = metot orada **biter**, sonraki satırlar çalışmaz → bozuk veri kaydedilmez.
+- `await` unutma (metot `async`).
+
+§NASIL 01-2
+**Hedef:** tabloyu DbContext'e tanıt. İki ekleme, mevcut koda:
+
+1. Tablo satırı — `Kullanicilar` satırının **altına**:
+```csharp
+public DbSet<Etiket> Etiketler => Set<Etiket>();
+```
+`DbSet<Etiket>` = "Etiket tablosu", `Etiketler` = koddaki adı.
+2. Sütun kuralı — `OnModelCreating` içine, mevcut satırın altına:
+```csharp
+mb.Entity<Etiket>().Property(e => e.Ad).HasMaxLength(50);
+```
+Okunuşu: "Etiket entity'sinin Ad özelliği en fazla 50 karakter".
+
+İkisi de yoksa migration tabloyu **üretmez**: en sık hata.
+
+§NASIL 01-3
+Üç komut, hepsi aynı iki bayrağı taşır: `-p` (migration hangi projeye yazılır) ve `-s` (ayarlar nereden okunur).
+
+| Komut | Ne yapar |
+|---|---|
+| `migrations add EtiketEkle ... -o Persistence/Migrations` | C# migration dosyası **üretir** (DB'ye dokunmaz) |
+| `migrations script` | üretilecek SQL'i **ekrana yazar** (uygulamadan önce oku) |
+| `database update` | değişikliği **veritabanına uygular** |
+```bash
+dotnet ef migrations add EtiketEkle -p src/Asistan.Infrastructure -s src/Asistan.Api -o Persistence/Migrations
+dotnet ef migrations script -p src/Asistan.Infrastructure -s src/Asistan.Api
+dotnet ef database update -p src/Asistan.Infrastructure -s src/Asistan.Api
+```
+Sıra önemli: **add → script → update**.
+
+§NASIL 01-4
+**Hedef:** boş ad → hata + depo çağrılmadı. 3 parça:
+
+1. İşaret ve metot başlığı: `[Fact]` sonra `public async Task OlusturAsync_BosAd_HataVerirKaydetmez()` (ad = ne test edildiği, `async Task`).
+2. **Act** — metodu *hemen çalıştırma*, bir "işlem" olarak sakla: `var islem = () => _servis.OlusturAsync("");`
+3. **Assert** — iki doğrulama:
+   - Hata fırlatıldı: `await islem.Should().ThrowAsync<ArgumentException>();`
+   - Depo hiç çağrılmadı: `_depo.Verify(d => d.EkleAsync(It.IsAny<Etiket>(), It.IsAny<CancellationToken>()), Times.Never);`
+```csharp
+[Fact]
+public async Task OlusturAsync_BosAd_HataVerirKaydetmez()
+{
+    var islem = () => _servis.OlusturAsync("");
+
+    await islem.Should().ThrowAsync<ArgumentException>();
+    _depo.Verify(d => d.EkleAsync(It.IsAny<Etiket>(), It.IsAny<CancellationToken>()), Times.Never);
+}
+```
+`It.IsAny<T>()` = "herhangi bir değer".
+
+§NASIL 01-5
+Tek satır, 3 parça: `services.AddScoped<ARAYÜZ, SINIF>();`
+
+1. `services.AddScoped` → ömür: istek başına bir tane (depolar/DbContext için doğrusu).
+2. `<IEtiketDeposu, EtiketDeposu>` → "arayüz istenirse bu sınıfı ver".
+3. `();` ile bitir.
+```csharp
+services.AddScoped<IEtiketDeposu, EtiketDeposu>();
+```
+
+§NASIL 02-0
+4 komut, sırayla:
+1. `git init -b main` → bu klasörü git deposu yap, ana dal adı `main`.
+2. `echo "ilk not" > notlar.txt` → dosyayı oluştur (`>` = içine yaz).
+3. `git add notlar.txt` → staging'e al ("bu dosya commit'e girsin").
+4. `git commit -m "feat: notlar eklendi"` → kaydet. `feat:` = yeni özellik; mesaj tırnak içinde.
+```bash
+git init -b main
+echo "ilk not" > notlar.txt
+git add notlar.txt
+git commit -m "feat: notlar eklendi"
+```
+
+§NASIL 02-1
+Mantık: **dal aç → orada çalış → ana dala dön → birleştir.**
+```bash
+git switch -c ozellik/selam              # 1) dal aç ve geç (-c = create)
+echo "selam" > selam.txt                 # 2) dosya yaz
+git add selam.txt                        #    staging
+git commit -m "feat: selam dosyasi"      #    kaydet
+git switch main                          # 3) ana dala dön
+git merge --no-ff ozellik/selam          # 4) birleştir, merge commit bırak
+```
+`--no-ff` unutma: geçmişte "bu özellik şu daldan geldi" görünür.
+
+§NASIL 02-2
+Çakışmada git 3 işaret koymuş. **İşaretler dışında kalan her şeyi** sen karar verirsin:
+
+1. `<<<<<<< HEAD` satırını **sil**.
+2. `=======` satırını **sil**.
+3. `>>>>>>> ozellik/b` satırını **sil**.
+4. İki taraf da kalsın istendi: `renk: AAA` ve `renk: BBB` satırları **ikisi de** dosyada kalsın.
+5. `selam dunya` satırına dokunma.
+
+Sonuç (3 satır, işaret yok):
+```
+renk: AAA
+renk: BBB
+selam dunya
+```
+Gerçek hayatta bu kararı "hangisi doğru?" diye verirsin; sonra `git add` + `git commit`.
+
+§NASIL 02-3
+İki komut, bu sırayla:
+```bash
+git log --oneline            # 1) geçmişe bak (commit'lerin hash'lerini gör)
+git revert a1b2c3d --no-edit # 2) o commit'in TERSİNİ yapan yeni commit
+```
+- `revert` yeni commit ekler → geçmiş silinmez (güvenli).
+- `--no-edit` → mesaj editörü açılmaz.
+- `reset --hard` **yazma**: o geçmişi siler.
+
+§NASIL 02-4
+Dört komut: **gizle → kaydet → etiketle**.
+```bash
+echo ".env" > .gitignore                       # 1) .env'yi görmezden gel
+git add .gitignore                             # 2) SADECE .gitignore'u ekle (.env'yi değil!)
+git commit -m "chore: gitignore eklendi"       # 3) kaydet
+git tag -a v0.1 -m "ilk surum"                 # 4) açıklamalı sürüm etiketi
+```
+`-a` açıklamalı etiket, `-m` açıklama. `git add .env` asla yazma, sır sızar.
+
+§NASIL 03-0
+Dockerfile'ı **yukarıdan aşağı** yaz, her satır bir komut (BÜYÜK harfle):
+
+1. `FROM python:3.12-slim` → temel imaj (küçük sürüm).
+2. `WORKDIR /app` → konteynerde çalışma klasörü.
+3. `COPY app.py .` → dosyayı kopyala (`.` = çalışma klasörü).
+4. `RUN useradd -m uygulama` → root olmayan kullanıcı oluştur.
+5. `USER uygulama` → bundan sonra o kullanıcıyla çalış (CMD'den **önce**).
+6. `EXPOSE 8000` → "bu port kullanılıyor" notu.
+7. `CMD ["python", "app.py"]` → başlatma komutu (köşeli parantez, çift tırnak).
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY app.py .
+RUN useradd -m uygulama
+USER uygulama
+EXPOSE 8000
+CMD ["python", "app.py"]
+```
+
+§NASIL 03-1
+Her satır bir dosya/klasör adı, başka bir şey yok:
+```
+.git
+__pycache__
+.env
+```
+Neden? `.git` imajı şişirir, `__pycache__` gereksiz, `.env` **sır** → imajda olursa imajı alan herkes okur.
+
+§NASIL 03-2
+Beş komut, sırasıyla: **derle → çalıştır → logla → içine bak → sil.**
+```bash
+docker build -t atolye-lab03 .                           # 1) imaj üret (-t ad, nokta = bu klasör)
+docker run -d -p 18099:8000 --name deneme atolye-lab03   # 2) arka planda çalıştır (-d), DIŞ:İÇ port
+docker logs deneme                                       # 3) çıktıyı gör
+docker exec deneme id -u                                 # 4) içinde komut çalıştır (0 olmamalı = root değil)
+docker rm -f deneme                                      # 5) zorla sil
+```
+`run`'da imaj adı (`atolye-lab03`) **en sonda**, `--name`'den sonra.

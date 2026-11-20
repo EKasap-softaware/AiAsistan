@@ -1,0 +1,660 @@
+§KONU 01
+## Ne öğreniyorsun?
+Gerçek işte her gün yaptığın döngü: **yeni bir özellik = entity → servis → veritabanı → test**. Bunu 4 parçaya böl:
+
+| Parça | Ne işe yarar | Tek cümle |
+|---|---|---|
+| **Solution (.sln)** | Proje kutusu | İçinde birden çok proje (.csproj) durur, hepsini tek komutla derlersin |
+| **Clean Architecture** | Katmanlı düzen | `Domain ← Application ← Infrastructure ← Api` — bağımlılık hep **içe** doğru |
+| **EF Core** | C# ↔ tablo çevirmeni | Sınıf yazarsın, tablo üretir (ORM) |
+| **Unit test** | Kodun otomatik denetçisi | Bir metodu izole edip "bu girdiyle şu çıkmalı" dersin |
+
+## Katmanlar: kim kime bağımlı?
+- **Domain**: entity'ler (`Etiket`). Hiçbir şeye bağımlı değil. Saf C#.
+- **Application**: arayüzler (`IEtiketDeposu`) + iş kuralları (`EtiketServisi`). Veritabanını **bilmez**, sadece arayüzü bilir.
+- **Infrastructure**: arayüzün gerçek uygulaması (EF Core, DbContext, migration).
+- **Api/Worker**: dış dünyaya açılan kapı, DI kaydı burada.
+
+> Neden? Veritabanını değiştirmek istersen sadece Infrastructure değişir; iş kuralların ve testlerin bozulmaz.
+
+## EF Core 3 kavram
+- **DbContext** = veritabanı oturumu. **DbSet&lt;T&gt;** = bir tablo.
+- **Migration** = şema değişikliğinin sürümlü kodu (git gibi, ama tablo için).
+- **Fluent API** (`OnModelCreating`) = kolon uzunluğu, zorunluluk, index gibi ayarlar.
+
+```bash
+dotnet ef migrations add EtiketEklendi -p src/Asistan.Infrastructure -s src/Asistan.Api   # değişikliği koda dök
+dotnet ef database update -p src/Asistan.Infrastructure -s src/Asistan.Api                # veritabanına uygula
+```
+
+## Unit test: AAA kalıbı
+```csharp
+[Fact]
+public async Task Ekle_bos_ad_verilirse_hata_firlatir()
+{
+    // Arrange (hazırla): sahte depo
+    var depo = new Mock<IEtiketDeposu>();
+    var servis = new EtiketServisi(depo.Object);
+    // Act (çalıştır)
+    var is_ = () => servis.EkleAsync("");
+    // Assert (doğrula)
+    await is_.Should().ThrowAsync<ArgumentException>();
+}
+```
+**Mock** = gerçek veritabanı yerine kullandığın sahte bağımlılık. Test hızlı ve deterministik olur.
+
+## Sık yapılan hatalar
+- Servis içinde doğrudan `DbContext` kullanmak (katman kuralı bozulur, test zorlaşır).
+- Migration eklemeyi unutmak → "tablo yok" hatası.
+- Testte gerçek DB'ye bağlanmak (unit test değil, entegrasyon testi olur).
+- Çalışan API/Worker DLL'leri kilitler → `dotnet test` önce **Stop** ister.
+
+§SORU 01 | Clean Architecture'da bağımlılık yönü nedir, neden?
+Dıştaki katman içtekine bağımlıdır: Api → Infrastructure → Application → Domain. Domain hiçbir şeye bağımlı değildir. Böylece veritabanı/framework değişse bile iş kuralları ve testleri etkilenmez.
+§SORU 01 | DbContext nedir? DbSet nedir?
+DbContext veritabanıyla bir oturumdur (sorgu, değişiklik takibi, SaveChanges). DbSet<T> bir tabloyu temsil eder; üzerinden LINQ ile sorgularsın.
+§SORU 01 | Migration nedir, neden kullanılır?
+Şema değişikliğini sürümlü koda çeviren mekanizmadır. Takımda herkesin ve her ortamın (dev/prod) veritabanı aynı şemaya `database update` ile getirilir; geri alma da mümkündür.
+§SORU 01 | Unit test ile entegrasyon testi farkı?
+Unit test tek bir birimi (metot/sınıf) bağımlılıklarını mock'layıp izole test eder; hızlıdır. Entegrasyon testi gerçek parçaları (DB, kuyruk) birlikte çalıştırır; yavaş ama gerçekçidir.
+§SORU 01 | Mock neden kullanılır?
+Dış bağımlılığı (DB, HTTP, kuyruk) sahtesiyle değiştirmek için: test hızlanır, sonuç deterministik olur ve "bu metot depoyu çağırdı mı?" doğrulanabilir.
+§SORU 01 | Dependency Injection nedir, ne kazandırır?
+Bir sınıfın ihtiyacı olan nesneleri kendi oluşturmak yerine dışarıdan (constructor ile) almasıdır. Gevşek bağlılık ve kolay test sağlar. .NET'te `services.AddScoped<IX, X>()` ile kaydedilir.
+§SORU 01 | AddScoped, AddSingleton, AddTransient farkı?
+Singleton: uygulama boyunca tek örnek. Scoped: her HTTP isteği için bir örnek (DbContext böyledir). Transient: her istenişte yeni örnek.
+§SORU 01 | async/await neden kullanılır?
+I/O beklerken (DB, ağ) thread'i bloklamamak için. Thread başka işe döner; sunucu daha çok isteği aynı anda kaldırır.
+§SORU 01 | Entity ile DTO farkı nedir?
+Entity veritabanı/iş modelidir; DTO dış dünyaya (API) giden-gelen veri şeklidir. Ayırmazsan iç alanlar (şifre hash'i gibi) sızar ve API şeman veritabanına kilitlenir.
+§SORU 01 | N+1 sorgu problemi nedir?
+Listeyi 1 sorguyla çekip her satırın ilişkili verisini ayrı sorguyla (N kez) çekmektir. EF Core'da `Include()` veya projeksiyon (`Select`) ile tek sorguya indirilir.
+
+§KONU 02
+## Ne öğreniyorsun?
+Git = **kodun zaman makinesi + takım çalışma aracı**. GitHub = Git deposunun internetteki evi (PR, issue, CI burada).
+
+## 3 alan (en önemli şey)
+```
+Çalışma dizini  --git add-->  Staging (sahne)  --git commit-->  Depo (geçmiş)  --git push-->  GitHub
+```
+- `git status` → neredeyim? `git diff` → ne değişti? `git log --oneline --graph` → geçmiş.
+
+## Günlük akış (bunu ezberle)
+```bash
+git switch -c ozellik/etiket     # 1) dal aç (main'e doğrudan yazma)
+# ... kod yaz ...
+git add -A && git commit -m "feat: etiket ekle"   # 2) küçük, anlamlı commit
+git push -u origin ozellik/etiket                  # 3) GitHub'a gönder
+# 4) GitHub'da Pull Request aç → inceleme → merge
+```
+
+## Dal ve birleştirme
+- **Dal (branch)** = paralel çalışma çizgisi, ucuz ve hızlı.
+- `git merge --no-ff dal` → birleştirme commit'i bırakır, geçmişte "şu özellik şuradan geldi" görünür.
+- **Çakışma (conflict)**: iki kişi aynı satırı değiştirdiyse Git seçemez. Dosyada şunu görürsün:
+```
+<<<<<<< HEAD
+senin sürüm
+=======
+karşı sürüm
+>>>>>>> dal
+```
+İşaretleri sil, doğru hali bırak, `git add` + `git commit`.
+
+## Geri alma: hangisi ne zaman?
+| Durum | Komut |
+|---|---|
+| Henüz commit etmedim, dosyayı geri al | `git restore dosya` |
+| Commit ettim, **paylaştım** | `git revert <hash>` (tersini yapan yeni commit — güvenli) |
+| Commit ettim, **paylaşmadım** | `git reset --soft HEAD~1` |
+| Paylaşılmış geçmişi ezmek | `git push --force` ❌ takımda yasak gibidir |
+
+## .gitignore ve etiket
+- `.gitignore`: `bin/`, `obj/`, `.env` gibi **hiç girmemesi** gerekenler. Sır (`.env`) commit edilirse geçmişten silmek zordur.
+- `git tag v1.0.0` → sürüm işareti.
+
+## Sık hatalar
+`.env` commit etmek • main'e doğrudan push • dev `git add .` ile istemediğin dosyayı almak • anlamsız mesaj ("fix", "asdf").
+
+§SORU 02 | git fetch ile git pull farkı?
+fetch uzaktaki değişiklikleri sadece indirir, çalışma dizinine dokunmaz. pull = fetch + merge (veya rebase); değişiklikleri yerel dala da uygular.
+§SORU 02 | merge ile rebase farkı?
+merge iki dalı birleştirme commit'iyle bağlar, geçmiş olduğu gibi kalır. rebase senin commit'lerini hedef dalın ucuna yeniden dizer: doğrusal temiz geçmiş verir ama commit hash'leri değişir; paylaşılmış dalda yapılmaz.
+§SORU 02 | revert ile reset farkı?
+revert, bir commit'in tersini yapan yeni commit ekler; geçmişi bozmaz, paylaşılmış dalda güvenlidir. reset dalı geriye taşır/geçmişi siler; yalnızca paylaşılmamış işte kullanılır.
+§SORU 02 | Çakışma nasıl çözülür?
+Çakışan dosyayı aç, <<<<<<< ======= >>>>>>> işaretlerini kaldırıp doğru sonucu bırak, `git add`, sonra `git commit` (merge) ya da `git rebase --continue`.
+§SORU 02 | Pull Request nedir, neden var?
+Dalın ana dala girmeden önce incelenmesi, CI testlerinin koşması ve tartışılması için açılan istektir. Kod kalitesi ve bilgi paylaşımı sağlar.
+§SORU 02 | .gitignore'a eklenen dosya zaten takipteyse ne olur?
+Etkisiz kalır; Git onu izlemeye devam eder. `git rm --cached dosya` ile takipten çıkarıp commit etmek gerekir.
+§SORU 02 | git stash ne işe yarar?
+Commit etmek istemediğin yarım işi geçici rafa kaldırır (`git stash`), dalı değiştirip dönünce `git stash pop` ile geri alırsın.
+§SORU 02 | Yanlışlıkla .env (sır) commit ettim, ne yaparım?
+Önce sırrı (API anahtarını) **iptal edip yenile** — geçmişte kaldığı için sızmış sayılır. Sonra geçmişten temizle (git filter-repo/BFG) ve .gitignore'a ekle.
+§SORU 02 | Commit mesajı nasıl yazılır?
+Kısa, emir kipinde ve "ne/neden" söyleyen: `feat: etiket ekleme`, `fix: boş ad hatası`. Conventional Commits (feat/fix/docs/refactor/test) takımlarda yaygındır.
+§SORU 02 | git cherry-pick nedir?
+Başka daldaki tek bir commit'i bulunduğun dala kopyalar. Acil düzeltmeyi başka sürüme taşırken kullanılır.
+
+§KONU 03
+## Ne öğreniyorsun?
+Docker = uygulamayı **bağımlılıklarıyla birlikte paketleyip her yerde aynı şekilde çalıştırmak**. "Bende çalışıyordu" sorununu bitirir.
+
+## 3 temel kavram
+| Kavram | Benzetme | Not |
+|---|---|---|
+| **Image** | Yemek tarifi + hazır paket | Değiştirilemez şablon (`docker build` ile üretilir) |
+| **Container** | Pişen yemek | Image'ın çalışan örneği (`docker run`) |
+| **Volume** | Dışarıdaki dolap | Container silinse de veri kalır |
+
+## Dockerfile (satır satır)
+```dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build   # 1) derleme aşaması (büyük imaj)
+WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /app
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0          # 2) çalışma aşaması (küçük imaj)
+WORKDIR /app
+COPY --from=build /app .
+USER app                                          # root olarak çalıştırma (güvenlik)
+ENTRYPOINT ["dotnet", "Asistan.Api.dll"]
+```
+**Multi-stage build**: SDK sadece derlemek için, son imaja sadece derlenmiş çıktı girer → küçük ve güvenli.
+
+## Komutlar
+```bash
+docker build -t asistan-api .                 # imaj üret
+docker run -d -p 8080:8080 --name api asistan-api   # çalıştır (-p DIŞ:İÇ port)
+docker ps            # çalışanlar        docker logs api   # günlük
+docker exec -it api sh   # içine gir     docker stop api && docker rm api
+```
+
+## Compose: birden çok konteyner tek dosyada
+```yaml
+services:
+  api:
+    build: .
+    ports: ["8080:8080"]
+    depends_on: [db]
+  db:
+    image: postgres:16
+    volumes: [pgdata:/var/lib/postgresql/data]
+volumes:
+  pgdata:
+```
+`docker compose up -d` hepsini kaldırır. **Konteynerler birbirine servis adıyla ulaşır** (`db:5432`), `localhost` ile **değil** — `localhost` konteynerin kendisidir.
+
+## Sık hatalar
+- Konteyner içinden `localhost`'a bağlanmaya çalışmak.
+- `.dockerignore` yazmamak (`bin/`, `.git` imaja girer, imaj şişer).
+- Sır'ları imaja gömmek (ortam değişkeni/secret kullan).
+- Volume'süz veritabanı → konteyner silinince veri gider.
+
+§SORU 03 | Image ile container farkı?
+Image değişmez bir şablondur (katmanlardan oluşur); container o image'ın çalışan örneğidir. Bir image'dan çok container başlatılabilir.
+§SORU 03 | Docker ile sanal makine (VM) farkı?
+VM tam bir işletim sistemi çalıştırır (ağır). Container host çekirdeğini paylaşır, sadece süreç + dosya sistemini izole eder; hafif ve saniyeler içinde açılır.
+§SORU 03 | Multi-stage build neden kullanılır?
+Derleme araçlarını (SDK) son imajdan ayırmak için. Sonuç: daha küçük imaj, daha az saldırı yüzeyi, daha hızlı çekme.
+§SORU 03 | Volume ne işe yarar?
+Container'ın yaşam döngüsünden bağımsız kalıcı depolama sağlar. Veritabanı verisi için şarttır; container silinse de veri durur.
+§SORU 03 | Port yönlendirme `-p 8080:80` ne demek?
+Ana makinenin 8080 portunu container'ın 80 portuna bağlar: DIŞ:İÇ. Tarayıcıdan localhost:8080 → container içindeki uygulamanın 80'i.
+§SORU 03 | Compose'ta servisler birbirini nasıl bulur?
+Compose ortak bir ağ kurar; servis adı DNS adı olur (örn. `mongo:27017`). `localhost` yazarsan container'ın kendisine gitmiş olursun.
+§SORU 03 | CMD ile ENTRYPOINT farkı?
+ENTRYPOINT sabit çalışacak programdır; CMD varsayılan argümandır ve `docker run` ile kolayca ezilir. Birlikte: ENTRYPOINT programı, CMD varsayılan argümanları verir.
+§SORU 03 | Katman önbelleği (layer cache) nasıl hızlandırır?
+Her Dockerfile satırı bir katman; değişmeyen katmanlar yeniden kullanılır. Bu yüzden önce nadiren değişen şeyi (bağımlılık restore) sonra sık değişen kaynak kodu COPY'lamak gerekir.
+§SORU 03 | Container'ı root olmayan kullanıcıyla çalıştırmak neden önemli?
+Container ele geçirilirse saldırganın yetkisi sınırlı kalır. `USER app` gibi bir kullanıcıya geçmek temel güvenlik pratiğidir.
+§SORU 03 | `docker compose down -v` ne yapar?
+Konteynerleri ve ağı kaldırır; `-v` ile isimli volume'ları da siler — **veri gider**. Dikkatli kullan.
+
+§KONU 04
+## Ne öğreniyorsun?
+MongoDB = **belge (JSON benzeri) tabanlı NoSQL veritabanı**. Şeması esnektir; iç içe veriyi tek belgede tutarsın. Projede sohbet mesajları ve AI hafızası için uygun.
+
+## SQL ile karşılaştırma
+| SQL | MongoDB |
+|---|---|
+| Tablo | **Koleksiyon** (collection) |
+| Satır | **Belge** (document) |
+| Kolon | Alan (field) |
+| JOIN | İç içe belge / `$lookup` |
+
+## CRUD (mongosh)
+```javascript
+use asistan
+db.mesajlar.insertMany([{kullanici:"ali", metin:"selam", tarih:new Date()}])   // ekle
+db.mesajlar.find({kullanici:"ali"}).sort({tarih:-1}).limit(10)                  // sorgula
+db.mesajlar.updateOne({_id:id}, {$set:{okundu:true}})                           // güncelle
+db.mesajlar.deleteMany({kullanici:"ali"})                                        // sil
+```
+
+## Index: sorguyu hızlandırır
+Index yoksa Mongo tüm koleksiyonu tarar (COLLSCAN). Sık filtrelediğin/sıraladığın alana index koy:
+```javascript
+db.mesajlar.createIndex({kullanici:1, tarih:-1})      // 1 artan, -1 azalan
+db.oturumlar.createIndex({olusturma:1}, {expireAfterSeconds:3600})   // TTL: 1 saat sonra otomatik silinir
+```
+
+## Aggregation: veriyi aşama aşama işle (boru hattı)
+```javascript
+db.siparisler.aggregate([
+  { $match: { durum: "tamam" } },                         // süz
+  { $group: { _id: "$musteri", toplam: { $sum: "$tutar" } } },   // grupla + topla
+  { $sort: { toplam: -1 } }                               // sırala
+])
+```
+
+## Atomik güncelleme
+`$inc` gibi operatörler okuma-değiştirme-yazma yarışını önler:
+```javascript
+db.sayaclar.updateOne({_id:"ziyaret"}, {$inc:{sayi:1}}, {upsert:true})
+```
+Önce okuyup sonra yazarsan iki istek aynı anda gelince biri kaybolur (**race condition**).
+
+## Sık hatalar
+Index'siz büyük sorgu • sınırsız büyüyen dizi (16 MB belge sınırı) • `find().toArray()` ile her şeyi belleğe çekmek • TTL alanını `Date` yerine metin yazmak (TTL çalışmaz).
+
+§SORU 04 | SQL ve NoSQL ne zaman hangisi?
+İlişkisel, tutarlılık gerektiren (para, sipariş) ve karmaşık JOIN'li veri için SQL. Esnek şema, iç içe/hiyerarşik veri, yüksek yazma ve yatay ölçek için MongoDB gibi NoSQL.
+§SORU 04 | Index nedir? Dezavantajı?
+Sorguyu hızlandıran sıralı yapı (B-tree). Bedeli: ek disk/bellek ve her yazmada güncelleme maliyeti. Her alana koymak yerine sorgularına göre seç.
+§SORU 04 | TTL index nedir?
+Bir tarih alanına konan, belgeyi `expireAfterSeconds` sonra otomatik silen index. Oturum, geçici hafıza, log gibi veriler için idealdir.
+§SORU 04 | Aggregation pipeline nedir?
+Belgelerin `$match`, `$group`, `$sort`, `$project` gibi aşamalardan sırayla geçtiği işlem hattı. SQL'deki WHERE/GROUP BY/ORDER BY karşılığıdır.
+§SORU 04 | `$set` ile `$inc` farkı?
+$set alanı verilen değere atar; $inc mevcut sayıyı atomik olarak artırır/azaltır (race condition'sız).
+§SORU 04 | Gömme (embed) mi, referans mı?
+Birlikte okunan ve küçük kalan veri → gömülür (tek sorgu). Büyüyen, bağımsız yaşayan veya çok yerden kullanılan veri → ayrı koleksiyon + referans.
+§SORU 04 | upsert nedir?
+Belge varsa günceller, yoksa ekler. `updateOne(filtre, güncelleme, {upsert:true})`.
+§SORU 04 | `_id` nedir?
+Her belgenin benzersiz birincil anahtarı. Verilmezse otomatik ObjectId üretilir (zaman damgası içerir).
+§SORU 04 | `explain()` ne işe yarar?
+Sorgunun index kullanıp kullanmadığını gösterir (IXSCAN iyi, COLLSCAN kötü). Performans sorununu bununla teşhis edersin.
+§SORU 04 | Mongo'da transaction var mı?
+Evet, çok belgeli ACID transaction replica set üzerinde desteklenir; ama tek belge işlemleri zaten atomiktir, bu yüzden doğru veri modeliyle çoğu zaman gerekmez.
+
+§KONU 05
+## Ne öğreniyorsun?
+RabbitMQ = **mesaj kuyruğu (message broker)**. Bir servis iş bırakır, başka servis sırayla alıp işler. Yavaş/hata verebilecek işleri **asenkron** yapmanı sağlar.
+
+## Akış
+```
+Producer → Exchange → (binding/routing key) → Queue → Consumer
+ (gönderen)  (dağıtıcı)                      (sıra)    (işleyen)
+```
+- **Producer** mesajı **exchange**'e bırakır, kuyruğa doğrudan değil.
+- **Exchange** routing key'e göre kuyruğa yönlendirir. Tipleri:
+  - `direct`: key tam eşleşirse • `fanout`: herkese kopya • `topic`: desen (`siparis.*`)
+- **Consumer** işini bitirince **ack** verir. Ack gelmezse mesaj başkasına/yeniden verilir.
+
+## Neden kuyruk?
+- API hızlı cevap verir, ağır iş arkada yapılır (e-posta, rapor, AI çağrısı).
+- Tüketici çökse mesaj **kaybolmaz** (durable kuyruk).
+- Yük artınca consumer sayısını artırırsın.
+
+## Hata yönetimi: retry + dead-letter
+1. İşleme başarısız → **yeniden dene** (aralıklı: 1sn, 5sn, 30sn).
+2. Hâlâ başarısız → mesaj **dead-letter queue**'ya gider; kaybolmaz, sonra incelersin.
+```json
+{ "durable": true, "arguments": { "x-dead-letter-exchange": "atolye.olu" } }
+```
+
+## MassTransit ile C#
+```csharp
+public record SiparisAlindi(Guid SiparisId);
+
+public class SiparisConsumer : IConsumer<SiparisAlindi>
+{
+    public async Task Consume(ConsumeContext<SiparisAlindi> ctx)
+    {
+        // iş yap; hata fırlatırsan retry devreye girer. Başarılıysa otomatik ack.
+    }
+}
+```
+**Altın kural:** hatayı `try/catch` ile **yutma** — sistem "başarılı" sanır, mesaj sessizce kaybolur.
+
+## Sık hatalar
+Yanlış routing key (mesaj sessizce düşer) • hata yutmak • sonsuz retry (zehirli mesaj kuyruğu tıkar) • kuyruğu `durable` yapmamak.
+
+§SORU 05 | Neden doğrudan HTTP yerine kuyruk?
+Gevşek bağlılık ve dayanıklılık: alıcı kapalı/yavaşken mesaj kuyrukta bekler, kaybolmaz. Gönderen beklemez, yük dalgalanması tamponlanır, consumer'lar bağımsız ölçeklenir.
+§SORU 05 | Ack nedir? Neden önemlidir?
+Consumer'ın "mesajı işledim" onayıdır. Ack gelmeden consumer ölürse broker mesajı tekrar verir; böylece iş kaybolmaz (at-least-once).
+§SORU 05 | Exchange tipleri nelerdir?
+direct (tam eşleşme), fanout (tüm bağlı kuyruklara), topic (desenli routing key, örn. `a.*.c`), headers (başlık eşleşmesi).
+§SORU 05 | Dead-letter queue nedir?
+Reddedilen, süresi dolan veya retry'ları tükenen mesajların yönlendirildiği kuyruk. Hatalı mesajı kaybetmeden sonradan inceleme/yeniden işleme imkânı verir.
+§SORU 05 | At-least-once ne demek, sonucu ne?
+Mesaj en az bir kez teslim edilir, ama tekrar gelebilir. Bu yüzden consumer **idempotent** olmalı (aynı mesaj iki kez işlense de sonuç aynı).
+§SORU 05 | Idempotency nasıl sağlanır?
+Mesaja benzersiz id ver; işlendi mi diye kontrol et (veritabanında kayıt/unique constraint) ve ikinci geleni atla.
+§SORU 05 | Durable kuyruk ile persistent mesaj farkı?
+Durable: kuyruk tanımı broker yeniden başlayınca durur. Persistent: mesajın kendisi diske yazılır. Mesajın korunması için ikisi birlikte gerekir.
+§SORU 05 | Prefetch (QoS) nedir?
+Consumer'a aynı anda verilecek ack'lenmemiş mesaj sayısı. Düşük tutmak yükü adil dağıtır; yüksek tutmak verimi artırır.
+§SORU 05 | Zehirli mesaj (poison message) nedir?
+Her denemede hata veren mesaj. Sınırsız retry kuyruğu tıkar; sınırlı retry + dead-letter ile ayrıştırılır.
+§SORU 05 | RabbitMQ ile Kafka farkı?
+RabbitMQ akıllı broker/kuyruk: routing, ack, mesaj tüketilince silinir. Kafka dağıtık log: mesajlar tutulur, tekrar okunabilir, çok yüksek hacim/akış işleme için. İş kuyruğu için RabbitMQ, olay akışı için Kafka.
+
+§KONU 06
+## Ne öğreniyorsun?
+LiteLLM = **tüm LLM sağlayıcılarına (Claude, OpenAI, Gemini...) tek kapıdan, OpenAI formatında erişim sağlayan proxy**. Uygulaman sadece LiteLLM'i bilir; sağlayıcı değiştirmek `config.yaml` satırı değiştirmektir.
+
+## Neden gerekli?
+- **Tek arayüz**: her sağlayıcı için ayrı SDK yazmazsın.
+- **Model takma adı**: kodda `asistan-hizli` dersin; arkasında hangi model olduğu config'de.
+- **Maliyet/limit**: bütçe, hız sınırı, zaman aşımı, **yedek model (fallback)**.
+- **Anahtar güvenliği**: sağlayıcı anahtarı sadece proxy'de durur, uygulamaya "sanal anahtar" verirsin.
+
+## config.yaml
+```yaml
+model_list:
+  - model_name: asistan-hizli            # kodda kullandığın takma ad
+    litellm_params:
+      model: anthropic/claude-haiku-4-5  # gerçek model
+      api_key: os.environ/ANTHROPIC_API_KEY   # anahtar ortam değişkeninden okunur (dosyaya yazma!)
+
+litellm_settings:
+  request_timeout: 60                    # saniye
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # LiteLLM'in kendi yönetici anahtarı
+```
+
+## İki farklı anahtar (karıştırma!)
+| Anahtar | Kimin | Nerede |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Sağlayıcının | LiteLLM → sağlayıcıya giderken |
+| `LITELLM_MASTER_KEY` | LiteLLM'in | Uygulaman → LiteLLM'e giderken (`Authorization: Bearer`) |
+
+## İstek (OpenAI formatı)
+```bash
+curl http://localhost:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"asistan-hizli","messages":[{"role":"user","content":"Merhaba"}]}'
+```
+Cevap `choices[0].message.content` içinde gelir, `usage` token sayısını verir (maliyet buradan).
+
+## Sık hatalar
+Sağlayıcı anahtarını config'e düz yazıp commit etmek • `model` alanına takma ad yerine gerçek ad yazmak • 401: yanlış anahtar • zaman aşımı koymamak (istek sonsuza asılır).
+
+§SORU 06 | LiteLLM neden kullanılır?
+Farklı LLM sağlayıcılarını tek OpenAI uyumlu arayüzle sunar; sağlayıcı değişimi koddan bağımsız olur, ayrıca maliyet takibi, limit, fallback ve merkezi anahtar yönetimi sağlar.
+§SORU 06 | Model takma adı (alias) ne işe yarar?
+Kod `asistan-hizli` gibi sabit bir ada bağlanır; arkadaki gerçek model config'te değişir. Model yükseltme/değiştirme kod değişikliği gerektirmez.
+§SORU 06 | Master key ile sağlayıcı anahtarı farkı?
+Sağlayıcı anahtarı LiteLLM'in LLM sağlayıcısına eriştiği anahtardır. Master key ise istemcilerin LiteLLM'in kendisine eriştiği anahtardır. Biri sızarsa diğeri etkilenmez.
+§SORU 06 | Fallback nedir?
+Ana model hata verirse/limite takılırsa otomatik yedek modele geçme. Kesintisiz hizmet sağlar.
+§SORU 06 | Token nedir, maliyet nasıl hesaplanır?
+Token, modelin işlediği metin parçasıdır (~Türkçede kelime başına 1,5-3). Maliyet = giriş token × giriş fiyatı + çıkış token × çıkış fiyatı.
+§SORU 06 | `temperature` ne yapar?
+Çıktının rastgeleliğini ayarlar. 0'a yakın: tutarlı/öngörülebilir (kod, sınıflandırma). Yüksek: yaratıcı/çeşitli.
+§SORU 06 | Sır neden `os.environ/...` ile verilir?
+Anahtar dosyaya yazılmaz, ortamdan okunur; böylece config güvenle git'e girer, anahtar `.env`'de kalır (o da .gitignore'da).
+§SORU 06 | Streaming nedir, ne zaman kullanılır?
+Cevabın parça parça (token token) akıtılmasıdır. Kullanıcı ilk kelimeyi hemen görür; sohbet arayüzlerinde algılanan hızı artırır.
+§SORU 06 | Rate limit (429) alırsan ne yaparsın?
+Üstel geri çekilmeyle (exponential backoff) yeniden denersin, LiteLLM'de fallback/limit ayarlarını kullanırsın, gerekirse isteği kuyruğa alırsın.
+
+§KONU 07
+## Ne öğreniyorsun?
+**LLM'in hafızası yoktur.** Her istekte ona bütün bağlamı **sen** gönderirsin. "Hafıza" = senin yazdığın mantık: neyi saklayacağın, neyi göndereceğin.
+
+## Sorun: bağlam penceresi (context window) sınırlı ve pahalı
+Konuşma uzadıkça hepsini göndermek hem **pahalı** hem sınırı **aşar**. Çözüm: 3 katmanlı hafıza.
+
+| Katman | Ne | Örnek |
+|---|---|---|
+| **Kısa süreli** | Son N mesaj (kayan pencere) | Son 10 mesaj |
+| **Özet** | Eski mesajların kısa özeti | 30 mesajı geçince eskileri özetle |
+| **Uzun süreli** | Süzülmüş kalıcı bilgiler | "Kullanıcı adı Emre", "Vegan" |
+
+## Akış
+```
+yeni mesaj → [uzun hafıza + özet + son N mesaj + yeni mesaj] → LLM → cevap → kaydet
+                                    ↑ prompt bunlardan kurulur
+```
+
+## Mantık örneği
+```csharp
+// Kayan pencere: sadece son N mesajı al
+public static List<Mesaj> SonN(List<Mesaj> hepsi, int n) =>
+    hepsi.Count <= n ? hepsi : hepsi.Skip(hepsi.Count - n).ToList();
+
+// Özet eşiği: mesaj sayısı eşiği aşınca özetle
+public static bool OzetGerekli(int mesajSayisi, int esik) => mesajSayisi > esik;
+```
+
+## Neyi uzun hafızaya yazmalı?
+Kalıcı, işe yarar bilgiler (tercih, ad, hedef). **Yazma:** selamlaşma, tek seferlik soru, hassas veri (şifre, kart no). Her kaydı **filtreden geçir**.
+
+## Test et!
+Hafıza mantığı saf fonksiyonlardır, mock gerekmez: `SonN([...5 mesaj], 3)` → son 3 gelir mi? Sınır durumları (0, tam N, N+1) test et.
+
+## Sık hatalar
+Tüm geçmişi göndermek (maliyet) • özeti güncellememek • hassas veriyi saklamak • sınır değerlerinde off-by-one.
+
+§SORU 07 | LLM neden "hatırlamaz"?
+Model durumsuzdur (stateless): her istek bağımsızdır. Önceki konuşmayı modele **her seferinde yeniden göndermek** uygulamanın sorumluluğudur.
+§SORU 07 | Context window nedir?
+Modelin tek istekte işleyebildiği toplam token sınırı (girdi+çıktı). Aşılırsa hata alınır; dolu pencere maliyeti ve gecikmeyi artırır.
+§SORU 07 | Kayan pencere (sliding window) nedir?
+Sadece son N mesajı bağlama koymaktır. Basit ve ucuzdur ama eski önemli bilgiyi kaybedebilir — bu yüzden özet/uzun hafıza ile birleştirilir.
+§SORU 07 | Özetleme (summarization) hafızası nasıl çalışır?
+Eşik aşılınca eski mesajlar LLM'e özetlettirilir; özet + son mesajlar gönderilir. Token tasarrufu sağlar, ayrıntı kaybı riski vardır.
+§SORU 07 | Kısa ve uzun süreli hafıza farkı?
+Kısa: o oturumun akışı (son mesajlar). Uzun: oturumlar arası kalıcı bilgiler (tercihler, gerçekler), genelde veritabanında saklanır ve ilgili olanlar prompt'a eklenir.
+§SORU 07 | Uzun hafızada neyi saklamamalısın?
+Parola, kart numarası, kimlik numarası gibi hassas veriyi; geçici/anlamsız içeriği (selam, "tamam"). Gizlilik (KVKK/GDPR) ve gürültü açısından filtre gerekir.
+§SORU 07 | RAG (vektör hafıza) nedir?
+Bilgi parçaları embedding (sayısal vektör) olarak saklanır; soruya **anlamca en yakın** parçalar bulunup prompt'a eklenir. Çok büyük bilgi tabanında "tüm geçmişi göndermeden" doğru bilgiyi getirir.
+§SORU 07 | Hafızayı nasıl test edersin?
+Hafıza mantığını saf fonksiyonlara ayırıp birim testle sınar: pencere boyutu, eşik sınırları, filtrenin neyi kabul/red ettiği; LLM'i çağırmak gerekmez.
+§SORU 07 | Hafıza maliyeti nasıl düşürülür?
+Pencereyi küçültüp eskiyi özetleyerek, yalnızca ilgili uzun hafıza kayıtlarını ekleyerek, prompt cache kullanarak ve ucuz bir modelle özetleyerek.
+
+§KONU 08
+## Ne öğreniyorsun?
+LangFlow = **LLM akışlarını sürükle-bırak çizen görsel araç**. Kutular (prompt, model, çıktı) kablolarla bağlanır; akış JSON olarak saklanır ve **API ile çağrılabilir**.
+
+## Parçalar
+| Parça | Ne yapar |
+|---|---|
+| **Chat Input** | Kullanıcı mesajını alır |
+| **Prompt** | Şablon: `{degisken}` yerlerine değer koyar |
+| **Model** | LLM'i çağırır (bizde LiteLLM üzerinden) |
+| **Chat Output** | Cevabı döndürür |
+
+## Prompt şablonu
+```
+Sen bir destek asistanısın. Sadece verilen bilgiye dayan, bilmiyorsan "bilmiyorum" de.
+
+Bilgi: {bilgi}
+Soru: {soru}
+```
+`{bilgi}` ve `{soru}` **değişkenlerdir**; akış çalışırken doldurulur. Net rol + kural + format = iyi prompt.
+
+## Akışı API ile çağırmak
+```bash
+curl -X POST http://localhost:7860/api/v1/run/AKIS_ID \
+  -H "x-api-key: $LANGFLOW_API_KEY" -H "Content-Type: application/json" \
+  -d '{"input_value":"Merhaba","input_type":"chat","output_type":"chat"}'
+```
+Böylece görsel tasarladığın akışı kodundan servis gibi çağırırsın.
+
+## LiteLLM'e bağlanmak (Docker'da!)
+Langflow ve LiteLLM **ayrı konteyner**. Langflow'dan LiteLLM'e adres: `http://litellm:4000/v1` (servis adı), `localhost:4000` **değil**.
+
+## Sırlar
+API anahtarını akışın içine **gömme**: akış JSON'u dışa aktarılınca anahtar da dosyaya girer, git'e sızar. Anahtarı **ortam değişkeni / Langflow Global Variable** olarak ver, akışta ismiyle referans et.
+
+## Sık hatalar
+`localhost` kullanmak (konteynerler arası) • anahtarı kutuya yapıştırıp akışı paylaşmak • prompt'ta değişkeni yanlış `{}` ile yazmak • akışı API'ye açmadan `AKIS_ID` aramak.
+
+§SORU 08 | LangFlow ne işe yarar, ne zaman kodlamak yerine tercih edilir?
+LLM akışlarını görsel olarak hızlı prototiplemek için. Hızlı deneme, iş birimiyle birlikte tasarım, basit RAG/agent akışları için iyi. Karmaşık iş mantığı/yüksek kontrol gerekirse kodlanır.
+§SORU 08 | Prompt şablonunda değişken nasıl kullanılır?
+Süslü parantezle (`{soru}`) yer tutucu bırakılır; akış çalışırken önceki kutunun çıktısı o yere doldurulur.
+§SORU 08 | İyi bir prompt neleri içerir?
+Rol (sen kimsin), görev, kısıtlar (neye dayan/ne yapma), çıktı formatı ve gerekirse örnekler (few-shot).
+§SORU 08 | Few-shot prompting nedir?
+Prompt'a birkaç girdi→çıktı örneği koyup modele istenen biçimi/davranışı göstermek. Talimat yetmediğinde tutarlılığı artırır.
+§SORU 08 | Langflow akışı kod tarafından nasıl çağrılır?
+`/api/v1/run/<akış-id>` endpoint'ine `x-api-key` başlığı ve `input_value` içeren JSON ile POST atılır.
+§SORU 08 | Konteynerden başka konteynere `localhost` neden çalışmaz?
+Her konteynerin kendi ağ alanı vardır; `localhost` konteynerin kendisidir. Aynı compose ağında servis adı (örn. `litellm`) kullanılır.
+§SORU 08 | Akışa API anahtarı gömmek neden kötü?
+Akış dışa aktarıldığında/paylaşıldığında anahtar JSON'la birlikte sızar. Global variable veya ortam değişkeni kullanılmalı.
+§SORU 08 | Halüsinasyon nedir, nasıl azaltılır?
+Modelin uydurma ama inandırıcı cevap vermesi. Azaltma: bilgiyi kaynaktan (RAG) verip "sadece buna dayan" demek, "bilmiyorsan bilmiyorum de" kuralı, düşük temperature, çıktıyı doğrulama.
+§SORU 08 | Prompt injection nedir?
+Kullanıcı veya harici içeriğin (web sayfası, belge) içine gömülü talimatların modeli asıl görevinden saptırmasıdır. Savunma: girdiyi veri olarak ayırmak, yetkileri kısıtlamak, çıktıyı denetlemek.
+
+§KONU 09
+## Ne öğreniyorsun?
+CI/CD = **her push'ta kodu otomatik derleyip test eden (CI) ve istenirse yayına alan (CD) hat**. GitHub'da bunun aracı **GitHub Actions**: `.github/workflows/*.yml`.
+
+## Neden?
+"Bende çalışıyor"u bitirir; kırık kod ana dala girmeden yakalanır; herkes aynı temiz ortamda doğrulanır.
+
+## Yapı
+```yaml
+name: CI
+on:                       # NE ZAMAN çalışsın
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:              # en az yetki (güvenlik)
+  contents: read
+
+jobs:
+  build:                  # NE çalışsın
+    runs-on: ubuntu-latest
+    timeout-minutes: 15   # asılırsa dakika yakmasın
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+          cache: true
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+```
+- **Workflow** = dosya • **Job** = bir makinede çalışan iş • **Step** = job içindeki adım (`uses:` hazır eylem, `run:` komut).
+
+## Güvenlik ve maliyet
+- `permissions: contents: read` → token'ı en düşük yetkiyle çalıştır.
+- `timeout-minutes` ve `concurrency` (eski çalışmayı iptal et) → boşa dakika yanmaz.
+- Eylem sürümünü sabitle (`@v4`), mümkünse tam commit SHA.
+
+## Sırlar
+```yaml
+env:
+  API_KEY: ${{ secrets.API_KEY }}      # Settings → Secrets'ta tanımlanır, kodda DÜZ YAZILMAZ
+```
+Sırlar günlüklerde `***` olarak maskelenir; yine de `echo $API_KEY` yapma. **Fork'tan gelen PR'larda sırlar verilmez.**
+
+## Sık hatalar
+Sırrı yml'ye yazmak • `permissions` vermemek (varsayılan geniş olabilir) • `timeout` koymamak • önbelleksiz her seferinde paket indirmek • `continue-on-error` ile kırık testi gizlemek.
+
+§SORU 09 | CI ile CD farkı?
+CI (Continuous Integration): her değişiklikte otomatik derleme + test. CD (Continuous Delivery/Deployment): testten geçeni otomatik olarak yayına hazırlama/alma.
+§SORU 09 | Workflow, job, step farkı?
+Workflow tüm otomasyon dosyası; job aynı runner'da çalışan adımlar kümesi (joblar varsayılan paralel); step job içindeki tek komut veya hazır eylemdir.
+§SORU 09 | `on: pull_request` ve `on: push` farkı?
+push: dala commit gelince. pull_request: PR açıldığında/güncellendiğinde, birleşmeden önce doğrulama sağlar. İkisi genelde birlikte kullanılır.
+§SORU 09 | Sırlar (secrets) nasıl yönetilir?
+Repo/Org Settings → Secrets'ta tanımlanır, `${{ secrets.ADI }}` ile okunur; log'da maskelenir. Koda/yml'ye düz yazılmaz, fork PR'larına verilmez.
+§SORU 09 | `permissions` neden önemli?
+GITHUB_TOKEN'ın yetkisini sınırlar (en az yetki ilkesi). Bir eylem ele geçirilse bile depoya yazamaz.
+§SORU 09 | Önbellek (cache) ne sağlar?
+Bağımlılıkları (NuGet/npm) çalışmalar arası saklar; build süresi ve dakika maliyeti düşer.
+§SORU 09 | `needs:` ne işe yarar?
+Job'lar arası bağımlılık: `deploy` job'u `needs: build` ile build başarılı olmadan çalışmaz.
+§SORU 09 | Matrix stratejisi nedir?
+Aynı job'u birden çok kombinasyonla (OS, .NET sürümü) paralel çalıştırır; tek tanımla çoklu ortamda test.
+§SORU 09 | Branch protection ile CI nasıl bağlanır?
+main dalında "status check zorunlu" kuralı açılır: CI kırmızıysa PR birleştirilemez.
+§SORU 09 | Pipeline çok yavaşsa ne yaparsın?
+Önbellek, paralel job'lar, gereksiz adımları kaldırma, değişen yola göre tetikleme (`paths:`), `concurrency` ile eskiyi iptal etme.
+
+§KONU 10
+## Ne öğreniyorsun?
+Claude Code'a **projeni öğretmek**: bir kez yaz, her oturumda otomatik bilsin. 4 dosya türü:
+
+| Dosya | Ne için | Ne zaman yüklenir |
+|---|---|---|
+| **CLAUDE.md** | Projenin kalıcı kuralları/komutları | Her oturum başında |
+| **Skill** (`.claude/skills/ad/SKILL.md`) | "X işini şöyle yap" tarifi | İlgili iş geldiğinde (açıklamaya bakarak) |
+| **Slash komutu** (`.claude/commands/ad.md`) | `/ad` ile elle çağırdığın hazır prompt | Sen yazınca |
+| **MCP sunucusu** (`.mcp.json`) | Claude'a **araç/veri kaynağı** bağlar | Oturumda araç olarak |
+
+## CLAUDE.md = projenin el kitabı
+```markdown
+# Proje
+Katmanlar: Domain ← Application ← Infrastructure ← Api. Bağımlılık içe doğru.
+## Komutlar
+- Test: `dotnet test`
+## Kurallar
+- Sır asla koda yazılmaz; `.env` kullan.
+```
+Kısa, net, **komut + kural** içersin. Uzun roman yazma; her oturumda bağlamı doldurur.
+
+## Skill (SKILL.md)
+```markdown
+---
+name: yeni-entity
+description: Yeni EF Core entity eklerken kullan (entity, servis, migration, test sırasıyla).
+---
+1. Domain'e entity ekle ...
+2. Migration oluştur ...
+```
+`description` en önemli satır: Claude **hangi işte bu skill'i açacağını** buradan anlar.
+
+## Slash komutu
+`.claude/commands/test-calistir.md` dosyası → `/test-calistir`. İçine tekrar eden prompt'u yazarsın.
+
+## MCP (Model Context Protocol)
+Claude'a dış araç bağlamanın standart yolu (veritabanı, GitHub, dosya...). `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "docs": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"] }
+  }
+}
+```
+Sır gerekiyorsa değeri dosyaya yazma, ortam değişkeninden ver.
+
+## Sık hatalar
+CLAUDE.md'yi şişirmek • skill `description`'ını belirsiz yazmak (hiç tetiklenmez) • MCP anahtarını `.mcp.json`'a düz yazıp commit etmek • her şeyi MCP yapmak (basit komut yeter).
+
+§SORU 10 | CLAUDE.md ne işe yarar?
+Projenin kalıcı bağlamını (mimari, komutlar, kurallar) Claude'a her oturumda otomatik verir; aynı şeyi sürekli anlatma ihtiyacını bitirir.
+§SORU 10 | Skill ile slash komutu farkı?
+Slash komutunu sen elle `/ad` ile çağırırsın. Skill'i Claude, `description`'a bakarak ilgili iş geldiğinde kendisi seçip yükler; içinde adım adım tarif ve ek dosyalar olabilir.
+§SORU 10 | İyi bir skill description'ı nasıl olmalı?
+Ne yaptığını ve **hangi isteklerde kullanılacağını** somut cümlelerle söylemeli ("yeni tablo ekle" gibi tetikleyici ifadeler). Belirsizse Claude skill'i hiç seçmez.
+§SORU 10 | MCP nedir?
+Model Context Protocol: Claude gibi modelleri dış araç ve veri kaynaklarıyla (DB, GitHub, dosya sistemi) standart bir protokolle bağlayan açık standart. Her sunucu araçlar (tools) sunar.
+§SORU 10 | MCP sunucusu için sır nasıl verilir?
+`.mcp.json`'a düz yazılmaz; ortam değişkeniyle (`env`) verilir ve dosya git'te güvenle kalır. Anahtarlar `.env`/gizli yöneticide durur.
+§SORU 10 | CLAUDE.md'ye ne yazılmaz?
+Uzun açıklamalar, sık değişen bilgi, sırlar. Kısa ve doğrulanabilir olmalı: komutlar, mimari kural, yasaklar.
+§SORU 10 | Claude'a büyük işi nasıl verirsin?
+Önce plan iste (plan mode), hedefi + kısıtları + "bitti" ölçütünü ver, küçük adımlara böl, her adımda testle doğrulat, diff'i incele.
+§SORU 10 | Claude'un çıktısına neden körü körüne güvenme?
+Hata yapabilir veya uydurabilir. Testle, derlemeyle ve diff incelemesiyle doğrulanmalı; özellikle güvenlik ve silme işlemleri insan onayından geçmeli.
+§SORU 10 | Hook nedir?
+Belirli olaylarda (araç çalışmadan önce/sonra) otomatik çalışan komutlar; örn. her dosya düzenlemesinden sonra formatlayıcı çalıştırmak. Kural "hatırlamak" değil, garantili otomasyon sağlar.

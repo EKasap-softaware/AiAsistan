@@ -1,0 +1,514 @@
+§NASIL 03-3
+**Boş sayfadan başla, şu sırayla yaz (her parça bir önceki üzerine eklenir):**
+
+**1) En üstte iki satır — "servisler" başlığı ve servisin adı**
+```yaml
+services:
+  web:
+```
+`web:` iki boşluk içeride. YAML'da **girinti = aitlik**: içerideki satır, üstündekine bağlı olur. (TAB kullanma, boşluk kullan.)
+
+**2) `web`'in altına 4 boşlukla özelliklerini ekle**
+```yaml
+    build: .
+```
+`.` = "Dockerfile'ı bu klasörde bul, imajı buradan derle".
+
+**3) Port — "DIŞ:İÇ" kuralı**
+```yaml
+    ports: ["18098:8000"]
+```
+Soldaki sayı **senin bilgisayarının** portu, sağdaki **konteynerin içindeki**. Görev "18098 → 8000" dedi, sırayı ters yazma.
+
+**4) Ortam değişkeni**
+```yaml
+    environment:
+      MESAJ: "istedigin bir metin"
+```
+`environment:` altına **6 boşlukla** `ANAHTAR: "değer"`.
+
+**5) Volume bağla (konteynerin içine)**
+```yaml
+    volumes:
+      - veri:/veri
+```
+`veri:/veri` = "`veri` adlı volume'ü konteynerde `/veri` yoluna bağla". Başında `- ` (tire + boşluk) liste elemanı demek.
+
+**6) En altta, `services:` ile AYNI hizada (girintisiz) volume'ü tanımla**
+```yaml
+volumes:
+  veri:
+```
+Bunu unutursan Docker "veri diye volume yok" der. Hizaya dikkat: `services:` ve `volumes:` aynı sütunda başlar.
+
+> Takıldıysan: yukarıdaki 6 parçayı sırayla alt alta kopyala = çözüm. Sonra kapat, baştan kendin yaz.
+
+§NASIL 03-4
+**Soru:** başka bir konteyner `mongo` servisine nasıl bağlanır?
+
+1. Compose'ta servis adı = o servisin **ağ adresi**. Servisin adı `mongo` → adres `mongo`.
+2. Adresin sonuna `:` ve **servisin portunu** ekle → `mongo:27017`.
+3. `localhost` yazma: konteynerin içinde `localhost` = "konteynerin kendisi". Orada Mongo çalışmıyor.
+
+Cevap kalıbı: **`servis-adı:port`** → yazman gereken tek satır `mongo:27017`.
+
+§NASIL 04-0
+**Hedef:** `siparisler` koleksiyonuna 3 belge eklemek.
+
+1. İlk satır hazır: `db = db.getSiblingDB('atolye')` — "atolye veritabanına geç". Dokunma.
+2. Koleksiyon + komut: `db.siparisler.insertMany(` — `db.` + **koleksiyon adı** + `.insertMany(`.
+3. Çoklu ekleme için **köşeli parantez** aç: `[`
+4. Her belge **süslü parantez**: `{ musteri: 'Ali', tutar: 120, durum: 'bekliyor' }`
+   - alan adı yazılır, `:` sonra değer. Metin **tırnaklı**, sayı **tırnaksız**.
+5. Belgeleri **virgülle** ayır (sonuncudan sonra virgül koyma), kapat: `])`
+```javascript
+db.siparisler.insertMany([
+  { musteri: 'Ali',  tutar: 120, durum: 'bekliyor' },   // 1. belge
+  { musteri: 'Ayse', tutar: 80,  durum: 'bekliyor' },   // 2. belge
+  { musteri: 'Can',  tutar: 300, durum: 'tamamlandi' }  // 3. belge
+])
+```
+Sık hata: `tutar: '120'` (tırnaklı) → metin olur, sayı değil.
+
+§NASIL 04-1
+**Hedef:** tutar > 100 **ve** durum 'bekliyor' olanları bul, tutara göre azalan sırala.
+
+1. `db.siparisler.find(` ile başla.
+2. İçine **tek bir süslü parantez** (filtre). Birden çok koşulu aynı süslü parantezin içinde virgülle yaz = **VE** anlamı:
+   `{ tutar: { $gt: 100 }, durum: 'bekliyor' }`
+   - "büyüktür" = `{ $gt: 100 }` (greater than). `tutar:` ardından **iç içe** süslü parantez.
+3. `find(...)`'ı kapat `)` sonra zincirle: `.sort({ tutar: -1 })` — `-1` azalan, `1` artan.
+```javascript
+db.siparisler.find({ tutar: { $gt: 100 }, durum: 'bekliyor' }).sort({ tutar: -1 })
+```
+Parantez sayısı: `find(` `{` `{` … `}` `}` `)` — açılan = kapanan olmalı.
+
+§NASIL 04-2
+**Hedef:** 2 index.
+
+Kalıp: `db.KOLEKSİYON.createIndex({ ALAN: YÖN })` — yön `1` artan, `-1` azalan.
+
+1. Tek alan: `db.siparisler.createIndex({ musteri: 1 })`
+2. Bileşik (iki alan, **sıra önemli**): aynı süslü parantezde ikisini yaz, virgülle:
+   `db.siparisler.createIndex({ durum: 1, tutar: -1 })`
+
+```javascript
+db.siparisler.createIndex({ musteri: 1 })
+db.siparisler.createIndex({ durum: 1, tutar: -1 })
+```
+Neden? "durumu eşit olan, tutara göre sıralı" sorgusunu index'ten hazır okur.
+
+§NASIL 04-3
+**Hedef:** 1 saat sonra silen TTL index.
+
+Kalıp: `createIndex({ alan: 1 }, { expireAfterSeconds: SANİYE })` — **iki** süslü parantez, virgülle ayrılmış: birincisi alan, ikincisi seçenek.
+
+1 saat = 60 × 60 = **3600** saniye.
+```javascript
+db.siparisler.createIndex({ olusturulma: 1 }, { expireAfterSeconds: 3600 })
+```
+Not: `olusturulma` alanı `new Date()` tipinde olmalı, metin olursa silinmez.
+
+§NASIL 04-4
+**Hedef:** müşteri başına toplam, sonucu yeni koleksiyona yaz.
+
+`aggregate` = bir **dizi aşama** ( `[ {aşama1}, {aşama2} ]` ). Her aşama bir öncekinin çıktısını alır.
+
+1. `db.siparisler.aggregate([`
+2. **1. aşama – grupla:** `{ $group: { _id: '$musteri', toplam: { $sum: '$tutar' } } }`
+   - `_id` = neye göre grupla. Alana başvururken başına **`$`** koy: `'$musteri'`.
+   - `toplam: { $sum: '$tutar' }` = her grupta tutarları topla, adını `toplam` koy.
+3. Aşamalar arasına **virgül**.
+4. **2. aşama – yaz:** `{ $out: 'musteri_toplam' }` = sonucu bu koleksiyona kaydet.
+5. Kapat: `])`
+```javascript
+db.siparisler.aggregate([
+  { $group: { _id: '$musteri', toplam: { $sum: '$tutar' } } },
+  { $out: 'musteri_toplam' }
+])
+```
+
+§NASIL 04-5
+**Hedef:** Can'ın siparişini güncelle.
+
+`updateOne(FİLTRE, GÜNCELLEME)` — **iki** argüman.
+
+1. Filtre = kimi güncelleyeceğim: `{ musteri: 'Can' }`
+2. Virgül.
+3. Güncelleme = ne değişecek. Mutlaka `$set` ile sarmala: `{ $set: { durum: 'tamamlandi', guncellenme: new Date() } }`
+   - `new Date()` = şu an.
+```javascript
+db.siparisler.updateOne({ musteri: 'Can' }, { $set: { durum: 'tamamlandi', guncellenme: new Date() } })
+```
+`$set` yazmazsan Mongo tüm belgeyi değiştirmeye çalışır → hata.
+
+§NASIL 05-0
+**Hedef:** kalıcı kuyruk + ölü mektup exchange'i (JSON).
+
+JSON kuralları: anahtarlar **çift tırnaklı**, satırlar virgülle ayrılır, son elemandan sonra virgül **yok**.
+
+1. Dış süslü parantez: `{ }`
+2. İlk özellik: `"durable": true,`  (true tırnaksız!)
+3. İkinci özellik iç içe bir nesne: `"arguments": { ... }`
+4. İçinde: `"x-dead-letter-exchange": "atolye.olu"`
+```json
+{
+  "durable": true,
+  "arguments": {
+    "x-dead-letter-exchange": "atolye.olu"
+  }
+}
+```
+Kontrol: `{` sayısı = `}` sayısı mı? Son satırdan sonra virgül yok mu?
+
+§NASIL 05-1
+**Hedef:** curl ile mesaj yayınla. Komutu **parçalara böl**:
+
+| Parça | Anlamı |
+|---|---|
+| `curl` | istek at |
+| `-u kullanici:parola` | giriş bilgisi (kullanıcı:parola) |
+| `-X POST` | POST yöntemi |
+| `http://localhost:15672/api/exchanges/%2F/amq.default/publish` | adres (`%2F` = `/` sanal sunucusu) |
+| `-H "Content-Type: application/json"` | "gövde JSON" başlığı |
+| `-d '{...}'` | gönderilen JSON (tek tırnak dışta, çift tırnak içte) |
+
+JSON içi: `{"properties":{},"routing_key":"atolye.kuyruk","payload":"selam","payload_encoding":"string"}`
+```bash
+curl -u kullanici:parola -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish -H "Content-Type: application/json" -d '{"properties":{},"routing_key":"atolye.kuyruk","payload":"selam","payload_encoding":"string"}'
+```
+Hepsi **tek satır**. `routing_key` kuyruk adıyla aynı olmalı yoksa mesaj kaybolur.
+
+§NASIL 05-2
+**Hedef:** consumer sınıfı.
+
+1. Başlık: `public class AiIstegiConsumer : IConsumer<AiIstegi>` — "AiIstegi mesajını tüketen sınıf".
+   (Log istersen: `(ILogger<AiIstegiConsumer> log)` sınıf adının hemen sonuna.)
+2. Süslü parantez aç, içine **tek metot**: `public async Task Consume(ConsumeContext<AiIstegi> context)`
+   - İmza **birebir** bu olmalı; `ConsumeContext<MesajTipi>` mesaj tipiyle aynı.
+3. Metodun içinde mesaja `context.Message` ile ulaş: `context.Message.Soru`
+4. Logla: `log.LogInformation("Soru: {Soru}", context.Message.Soru);`
+```csharp
+public class AiIstegiConsumer(ILogger<AiIstegiConsumer> log) : IConsumer<AiIstegi>
+{
+    public async Task Consume(ConsumeContext<AiIstegi> context)
+    {
+        log.LogInformation("Soru: {Soru}", context.Message.Soru);
+        await Task.CompletedTask;
+    }
+}
+```
+`async` kullandın → içinde en az bir `await` olsun (`await Task.CompletedTask;`).
+
+§NASIL 05-3
+**Hedef:** üstel retry.
+
+Kalıp: `e.UseMessageRetry(r => r.Exponential(DENEME, MIN, MAX, ARTIŞ));`
+
+Dört sayıyı sırayla doldur:
+1. Deneme sayısı → `5`
+2. En az bekleme → `TimeSpan.FromSeconds(1)`
+3. En çok bekleme → `TimeSpan.FromMinutes(1)`
+4. Artış adımı → `TimeSpan.FromSeconds(5)`
+```csharp
+e.UseMessageRetry(r => r.Exponential(5, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(5)));
+```
+Bu satırı `// retry ayarını buraya yaz` yerine, `ConfigureConsumer` satırının **üstüne** koy.
+
+§NASIL 05-4
+Tek kelime. **Fan** = yelpaze: bir mesajı bağlı tüm kuyruklara yayar. İngilizce adı: `fanout`.
+
+Cevap: `tip: fanout` (diğer tip adlarını açıklamada bile yazma).
+
+§NASIL 06-0
+**Hedef:** `atolye` takma adı.
+
+YAML'da listenin her elemanı `- ` ile başlar.
+
+1. `model_list:` (zaten var) altına, 2 boşlukla: `- model_name: atolye`  → kodda kullanılacak takma ad.
+2. Aynı elemanın altına (4 boşluk): `litellm_params:` → gerçek ayarlar bu başlığın altında.
+3. 6 boşlukla 3 satır:
+   - `model: anthropic/claude-haiku-5-5` (gerçek model)
+   - `api_key: os.environ/ANTHROPIC_API_KEY` (anahtar **ortamdan okunur**, düz yazma)
+   - `max_tokens: 50`
+```yaml
+model_list:
+  - model_name: atolye
+    litellm_params:
+      model: anthropic/claude-haiku-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+      max_tokens: 50
+```
+Girintiye dikkat: `model_name` ve `litellm_params` aynı hizada (4 boşluk).
+
+§NASIL 06-1
+`litellm_settings:` başlığı hazır. Altına **2 boşlukla** iki satır:
+```yaml
+litellm_settings:
+  drop_params: true
+  request_timeout: 30
+```
+`true` tırnaksız, `30` saniye ve sayı olarak.
+
+§NASIL 06-2
+**Hedef:** LiteLLM'e istek. Parçalar:
+
+| Parça | Anlamı |
+|---|---|
+| `curl http://localhost:4000/v1/chat/completions` | adres (OpenAI uyumlu yol) |
+| `-H "Authorization: Bearer $LITELLM_MASTER_KEY"` | kimlik; anahtarı **düz yazma**, `$DEĞİŞKEN` yaz |
+| `-H "Content-Type: application/json"` | gövde JSON |
+| `-d '{"model":"atolye","messages":[{"role":"user","content":"tamam yaz"}]}'` | gövde |
+
+Gövde: `model` takma adın, `messages` bir **dizi**, içinde `{role, content}` nesnesi.
+```bash
+curl http://localhost:4000/v1/chat/completions -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" -d '{"model":"atolye","messages":[{"role":"user","content":"tamam yaz"}]}'
+```
+
+§NASIL 06-3
+Tek cümle, 3 şeyi söyle: (1) uygulamaya **LiteLLM master key** verilir, (2) **Anthropic** anahtarı (3) yalnızca **LiteLLM**'de durur.
+
+> Uygulamaya LiteLLM master key verilir; Anthropic anahtarı yalnızca LiteLLM'in ortam değişkeninde durur.
+
+Neden? Sızarsa gerçek sağlayıcı anahtarı hiç dışarı çıkmamış olur.
+
+§NASIL 07-0
+**Hedef:** son `n` mesajı döndür.
+
+Düşün: boş/negatif n → boş liste; yoksa son n eleman.
+
+1. Koruma (erken çıkış): `if (n <= 0) return Array.Empty<string>();`
+2. Asıl iş: `mesajlar.TakeLast(n)` = **son n** eleman (n listeden büyükse hepsini verir, hata atmaz).
+3. Sonucu listeye çevir: `.ToList()`
+```csharp
+public static IReadOnlyList<string> SonN(IReadOnlyList<string> mesajlar, int n)
+{
+    if (n <= 0) return Array.Empty<string>();
+    return mesajlar.TakeLast(n).ToList();
+}
+```
+`Take(n)` = ilk n, `TakeLast(n)` = **son** n — karıştırma.
+
+§NASIL 07-1
+Cümleyi koda çevir: "ulaştığında **veya** geçtiğinde true" = `>=`.
+
+Gövde tek ifade, `=>` ile yazılır:
+```csharp
+public static bool OzetGerekliMi(int mesajSayisi, int esik) => mesajSayisi >= esik;
+```
+Kontrol: 20,20 → `20 >= 20` true ✔, 19,20 → `19 >= 20` false ✔. (`>` yazarsan 20,20 yanlış olur.)
+
+§NASIL 07-2
+**Hedef:** filtre. Önce **boş iki araç** kur, sonra döngüyle süz.
+
+1. Tekrar kontrolü için: `var gorulen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);` (büyük/küçük harf fark etmez)
+2. Sonuç listesi: `var sonuc = new List<string>();`
+3. Her aday için döngü: `foreach (var aday in adaylar) { ... }`
+4. Döngünün içinde sırayla:
+   - temizle: `var s = (aday ?? "").Trim();`
+   - boş veya >200 ise **atla**: `if (s.Length == 0 || s.Length > 200) continue;`
+   - "YOK" ise atla: `if (s.Equals("YOK", StringComparison.OrdinalIgnoreCase)) continue;`
+   - çok satırlıysa atla: `if (s.Contains('\n') || s.Contains('\r')) continue;`
+   - ilk kez görülüyorsa ekle: `if (gorulen.Add(s)) sonuc.Add(s);`  (`Add` daha önce varsa `false` döner)
+5. En sonda `return sonuc;`
+
+`continue` = "bu adayı bırak, sonrakine geç".
+
+§NASIL 07-3
+**Hedef:** SonN için 2 test.
+
+Her test = `[Fact]` + metot. AAA'yı tek satıra sığdır:
+```csharp
+[Fact]
+public void SonN_SonIkiyiSiraylaDondurur()
+    => KonusmaPenceresi.SonN(new[] { "a", "b", "c", "d" }, 2).Should().Equal("c", "d");
+```
+1. `[Fact]` testi işaretler.
+2. `KonusmaPenceresi.SonN(liste, 2)` = metodu çağır (**Act**).
+3. `.Should().Equal("c", "d")` = sonuç **bu elemanlar, bu sırayla** (**Assert**).
+4. İkincisi aynı kalıp, `0` ve `.Should().BeEmpty()` (boş bekleniyor).
+
+Her iki testi `KonusmaPenceresiTests` sınıfının `{ }` içine koy.
+
+§NASIL 08-0
+Düz metin yazıyorsun. 3 şey olmalı:
+1. Rol/talimat cümlesi: "Kısa ve **Türkçe** cevap ver."
+2. Kullanıcı girdisinin geleceği **değişken**, süslü parantezle: `{soru}`
+3. Talimatı girdiden ayır (injection'a karşı).
+```
+Sen yardımsever bir asistansın. Kısa ve Türkçe cevap ver.
+
+Soru: {soru}
+```
+Kontrol kelimeleri: **kısa**, **türkçe**, **{soru}** geçmeli.
+
+§NASIL 08-1
+curl parçaları:
+1. `curl -X POST "http://localhost:7860/api/v1/run/ABC123"` — POST + adres, **flow id** (`ABC123`) yolun sonunda.
+2. `-H "Content-Type: application/json"` — JSON gönderiyorsun.
+3. `-H "x-api-key: $LANGFLOW_API_KEY"` — anahtar ortamdan, düz yazma.
+4. `-d '{"input_value":"KDV nedir?","input_type":"chat","output_type":"chat"}'` — gövde.
+```bash
+curl -X POST "http://localhost:7860/api/v1/run/ABC123" -H "Content-Type: application/json" -H "x-api-key: $LANGFLOW_API_KEY" -d '{"input_value":"KDV nedir?","input_type":"chat","output_type":"chat"}'
+```
+
+§NASIL 08-2
+Kural: konteynerler arasında adres = **servis adı:port**. `localhost` yok.
+
+1. Protokol: `http://`
+2. Servis adı: `litellm`
+3. Port: `:4000`
+4. OpenAI uyumlu yol: `/v1`
+
+Birleştir: `http://litellm:4000/v1`
+
+§NASIL 08-3
+İki ifade geçsin: **Global Variable** (Settings'te tanımlanır) ve tür **Credential**.
+
+> Settings'ten Global Variable ekler, türünü Credential seçerim ve bileşende o değişkeni kullanırım.
+
+Neden? Akışı dışa aktarınca anahtar JSON'a girmez, sadece değişken adı kalır.
+
+§NASIL 09-0
+YAML'da **iki boşluk** girinti.
+
+1. `on:` sütun 0'dan başlar (üstteki `name:` ile aynı hiza).
+2. `push:` 2 boşluk, altına 4 boşlukla `branches: [main]`.
+3. `pull_request:` 2 boşluk (push ile **aynı hiza**), altı boş kalabilir = her PR.
+```yaml
+name: Atolye CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+```
+
+§NASIL 09-1
+Yukarıdan aşağı, her seviye 2 boşluk içeride:
+```yaml
+jobs:                       # 0 boşluk
+  test:                     # 2  → job adı
+    runs-on: ubuntu-latest  # 4  → hangi makine
+    steps:                  # 4
+      - uses: actions/checkout@v4          # 6  → önce kodu indir
+      - uses: actions/setup-dotnet@v4      # 6  → sonra .NET kur
+        with:                              # 8  (tire'den 2 sonra)
+          dotnet-version: 9.0.x            # 10
+```
+- `- uses:` = hazır eylem çalıştır. `with:` o eylemin ayarları.
+- `with:` hizası `uses:`'ın **u**'su ile aynı olmalı (tireden sonra).
+- **Sıra**: checkout önce, setup-dotnet sonra.
+
+§NASIL 09-2
+Verilen kodu 2 yerde genişlet:
+
+1. `with:` altına bir satır ekle (`dotnet-version` ile aynı hiza): `cache: true`
+2. `steps:` listesinin sonuna **iki** yeni adım (tire `- uses:` ile aynı hizada):
+   - `- run: dotnet build --no-restore -c Release`
+   - `- run: dotnet test --no-build -c Release`
+
+`run:` = kabuk komutu. Sıra: **build önce, test sonra**. `--no-build` = "zaten derledim, tekrar derleme".
+```yaml
+        with:
+          dotnet-version: 9.0.x
+          cache: true
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+```
+
+§NASIL 09-3
+Verilen dosyaya 3 şey ekle:
+
+1. `on:` bloğundan sonra, **girintisiz**:
+```yaml
+permissions:
+  contents: read
+```
+2. Hemen altına:
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+3. `test:` job'ının içine (`runs-on` ile aynı hiza, 4 boşluk): `timeout-minutes: 15`
+
+Hepsi birleşince: `permissions` ve `concurrency` **dosya seviyesinde** (0 boşluk), `timeout-minutes` **job içinde** (4 boşluk).
+
+§NASIL 09-4
+Adımın altına `env:` ekle, `run:` ile **aynı hizada**:
+```yaml
+      - run: dotnet test
+        env:
+          LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+```
+- `env:` 8 boşluk (`run:`'ın r'si ile aynı sütun).
+- Değişken adı: `LITELLM_KEY`; değer: `${{ secrets.SECRET_ADI }}` (iki süslü parantez, boşluklarla).
+- Gerçek anahtarı **asla** yazma: sır GitHub Settings → Secrets'ta durur.
+
+§NASIL 10-0
+Dosyanın yapısı iki kısım: **frontmatter** + **gövde**.
+
+1. Başlangıç `---` ile aç.
+2. `name: test-yaz` (klasör adıyla aynı).
+3. `description:` — en az 50 karakter, ne yaptığını **ve ne zaman** kullanılacağını söyle: "Yeni bir servis sınıfı için unit test yazarken kullan. ...".
+4. `---` ile kapat.
+5. Gövde: `1.` `2.` `3.` ile numaralı adımlar.
+```
+---
+name: test-yaz
+description: Yeni bir servis sınıfı için unit test yazarken kullan. xUnit, Moq ve FluentAssertions ile AAA düzeninde test üretir.
+---
+1. Servisin bağımlılıklarını (arayüzleri) bul.
+2. Her bağımlılığı Moq ile sahtele.
+3. Geçerli, boş ve sınır değer için ayrı test yaz.
+```
+
+§NASIL 10-1
+Düz metin bir prompt. 4 şey söyle:
+1. Eylem: "**özetle**"
+2. Miktar: "**5 maddede**"
+3. Ek istek: "**riskli** yerleri belirt"
+4. Dosya adının geleceği yer: **`$ARGUMENTS`**
+
+Örnek:
+```
+Şu dosyayı 5 maddede özetle ve riskli yerleri belirt: $ARGUMENTS
+```
+`/ozet kodum.cs` yazınca `$ARGUMENTS` yerine `kodum.cs` girer.
+
+§NASIL 10-2
+Markdown: `##` başlık, `- ` madde.
+
+1. Başlık hazır: `## Test`
+2. En az 3 satır, her biri `- ` ile başlasın.
+3. Dört içerik: unit test yaz • **Moq** ile sahtele • hata yolunda **Times.Never** • (istersen sınır değer).
+```markdown
+## Test
+- Her yeni servise unit test yaz.
+- Dış sistemleri Moq ile sahtele.
+- Hata yolunda Times.Never ile kaydın yapılmadığını doğrula.
+```
+Kısa, emir kipinde yaz.
+
+§NASIL 10-3
+JSON'u içten dışa kur:
+
+1. Sunucu adı ve içi: `"dosya-okuyucu": { ... }`
+2. İçinde 3 özellik:
+   - `"command": "npx"` (hangi programla çalışır)
+   - `"args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"]` (argüman **dizisi**, sırayla)
+   - `"env": { "TOKEN": "${DOSYA_TOKEN}" }` (ortam değişkeninden oku, düz yazma)
+3. Özellikler arasına virgül, sonuncudan sonra yok.
+4. Hepsi `"mcpServers": { ... }` içinde.
+```json
+{
+  "mcpServers": {
+    "dosya-okuyucu": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./docs"],
+      "env": { "TOKEN": "${DOSYA_TOKEN}" }
+    }
+  }
+}
+```
