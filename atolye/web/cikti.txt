@@ -192,45 +192,47 @@ Gerçek mongosh çıktısı:
 `matchedCount: 1` (1 belge bulundu), `modifiedCount: 1` (1 belge değişti). Belgeye yeni `guncellenme` alanı eklendi.
 
 §CIKTI 05-0
-Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+Gerçek çalıştırma çıktısı:
 ```
-$ rabbitmqadmin declare queue --name atolye.siparis --durable true
-  ✔ tamam
-$ rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-2
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true
-  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
-  9  false    atolye.siparis  1    siparis-1  string
-$ rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false
-  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
-  9  true     atolye.siparis  1    siparis-1  string
-  ↑ yeniden_teslim=true: bu mesaj daha önce verilmiş (ack gelmediği için ya da ölü mektup olarak geri döndü)
-  9  false    atolye.siparis  0    siparis-2  string
+Bağlantı açık mı: True
+Kanal açık mı: True, kanal no: 1
 
 ── Sonuç: RabbitMQ'da şu an ne var? ──
-kuyruk    atolye.siparis             bekleyen: 0  işlenmekte(ack bekliyor): 0
+(hiçbir şey yok — bu çalıştırmada kuyruk/exchange açılmadı)
 ```
-Bu çıktıda `yeniden_teslim`'e bak: ilk komutta `false`, ikincide `true`. Bakıp geri koyduğun mesaj "bir kez verilmişti" diye işaretlenir. Son satırda `bekleyen: 0`: ikisini de alıp silince kuyruk boşaldı.
+İlk iki satır sonucu: bağlantı da kanal da açık. `kanal no: 1` bu bağlantıdaki ilk kanal demek; ikinci kanal açsaydın 2 olurdu. Alttaki tablo boş, çünkü henüz kuyruk açmadın.
 
 §CIKTI 05-1
-Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+Gerçek çalıştırma çıktısı:
 ```
-$ rabbitmqadmin declare exchange --name atolye.siparisler --type direct
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.kargo --durable true
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.fatura --durable true
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.fatura --routing-key fatura
-  ✔ tamam
-$ rabbitmqadmin publish message --exchange atolye.siparisler --routing-key kargo --payload paket-1
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin publish message --exchange atolye.siparisler --routing-key yok --payload kayip
-  ⚠ yayınlandı AMA hiçbir kuyruğa ulaşmadı → mesaj KAYBOLDU (routing key yanlış ya da bağ/binding yok)
+Gönderildi: siparis-1
+Gönderildi: siparis-2
+Kuyrukta bekleyen mesaj: 2
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+kuyruk    atolye.siparis             bekleyen: 2  işlenmekte(ack bekliyor): 0
+```
+Sondaki sayı **2**: iki mesaj kuyrukta bekliyor. Alttaki tabloda `bekleyen: 2` aynı bilgi, bu kez RabbitMQ'nun kendi gözünden. Program bitti ama mesajlar durable kuyrukta durur; sayfa en sonda hepsini temizler.
+
+§CIKTI 05-2
+Gerçek çalıştırma çıktısı:
+```
+[hazır] atolye.is kuyruğunda 3 mesaj bekliyor.
+BasicGet ile alındı: siparis-1
+Consumer ile alındı: siparis-2
+Consumer ile alındı: siparis-3
+[sonuç] Kuyrukta bekleyen mesaj: 0  -> hiç mesaj kalmadı (hepsi ack'lendi ya da reddedildi) ✔
+
+── Sonuç: RabbitMQ'da şu an ne var? ──
+kuyruk    atolye.is                  bekleyen: 0  işlenmekte(ack bekliyor): 0
+```
+Üç mesaj sırayla alındı: biri `BasicGet` ile (çekme), ikisi consumer ile (dinleme). Hepsine ack verildiği için kuyrukta bekleyen kalmadı. `BasicAckAsync` satırını silip tekrar çalıştırırsan son satır `3` olur: mesajlar geri döner.
+
+§CIKTI 05-3
+Gerçek çalıştırma çıktısı:
+```
+kargo kuyruğu : 1 mesaj
+fatura kuyruğu: 0 mesaj
 
 ── Sonuç: RabbitMQ'da şu an ne var? ──
 exchange  atolye.siparisler          tip: direct
@@ -239,23 +241,13 @@ kuyruk    atolye.kargo               bekleyen: 1  işlenmekte(ack bekliyor): 0
 bağ       atolye.siparisler  --[fatura]-->  atolye.fatura
 bağ       atolye.siparisler  --[kargo]-->  atolye.kargo
 ```
-`atolye.kargo`'da `bekleyen: 1`, `atolye.fatura`'da `0`: mesaj yalnızca anahtarı eşleşen kuyruğa gitti. Yanlış anahtarlı mesaj için hata yok, yalnızca `⚠ KAYBOLDU` uyarısı var; gerçek RabbitMQ da böyle sessizdir.
+`kargo` etiketli mesaj yalnızca `atolye.kargo`'ya girdi. `yok` etiketli mesaj **hiçbir yerde yok**: hata da vermedi. Alttaki tablodaki `bağ` satırları exchange'in kurallarını gösterir.
 
-§CIKTI 05-2
-Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+§CIKTI 05-4
+Gerçek çalıştırma çıktısı:
 ```
-$ rabbitmqadmin declare exchange --name atolye.olaylar --type fanout
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.eposta --durable true
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.istatistik --durable true
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.eposta --routing-key ""
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.istatistik --routing-key ""
-  ✔ tamam
-$ rabbitmqadmin publish message --exchange atolye.olaylar --routing-key "" --payload yeni-uye
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+atolye.eposta: 1 mesaj
+atolye.istatistik: 1 mesaj
 
 ── Sonuç: RabbitMQ'da şu an ne var? ──
 exchange  atolye.olaylar             tip: fanout
@@ -264,27 +256,13 @@ kuyruk    atolye.istatistik          bekleyen: 1  işlenmekte(ack bekliyor): 0
 bağ       atolye.olaylar  --[]-->  atolye.eposta
 bağ       atolye.olaylar  --[]-->  atolye.istatistik
 ```
-Tek mesaj yolladın, iki kuyrukta da `bekleyen: 1`: fanout her bağlı kuyruğa kopya atar. Bağlardaki `[]` boş routing key'dir (fanout bakmaz).
+Tek `BasicPublishAsync` çağırdın, iki kuyrukta da 1 mesaj var: fanout her bağlı kuyruğa kopya atar. Bağlardaki `[]` boş etikettir (fanout bakmaz).
 
-§CIKTI 05-3
-Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+§CIKTI 05-5
+Gerçek çalıştırma çıktısı:
 ```
-$ rabbitmqadmin declare exchange --name atolye.log --type topic
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.hatalar --durable true
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.tum --durable true
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.log --destination-type queue --destination atolye.hatalar --routing-key '*.hata'
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.log --destination-type queue --destination atolye.tum --routing-key '#'
-  ✔ tamam
-$ rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.hata --payload m1
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.bilgi --payload m2
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin publish message --exchange atolye.log --routing-key stok.hata --payload m3
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
+hatalar: 2 mesaj
+tum    : 3 mesaj
 
 ── Sonuç: RabbitMQ'da şu an ne var? ──
 exchange  atolye.log                 tip: topic
@@ -295,52 +273,20 @@ bağ       atolye.log  --[#]-->  atolye.tum
 ```
 `atolye.hatalar`: 2 (`odeme.hata`, `stok.hata`), `atolye.tum`: 3 (hepsi). `odeme.bilgi` yalnızca `#` desenine uydu.
 
-§CIKTI 05-4
-Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
+§CIKTI 05-6
+Gerçek çalıştırma çıktısı:
 ```
-$ rabbitmqadmin declare exchange --name atolye.olu --type fanout
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.olu-kutusu --durable true
-  ✔ tamam
-$ rabbitmqadmin declare binding --source atolye.olu --destination-type queue --destination atolye.olu-kutusu --routing-key ""
-  ✔ tamam
-$ rabbitmqadmin declare queue --name atolye.is --durable true --arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'
-  ✔ tamam
-$ rabbitmqadmin publish message --routing-key atolye.is --payload is-1
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin publish message --routing-key atolye.is --payload is-2
-  ✔ yayınlandı ve en az bir kuyruğa ulaştı (routed)
-$ rabbitmqadmin get messages --queue atolye.is --ack-mode reject_requeue_false
-  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
-  4  false    atolye.is  1    is-1  string
-$ sleep 3
-  … 3 sn beklendi
-$ rabbitmqadmin get messages --queue atolye.olu-kutusu --count 5 --ack-mode ack_requeue_true
-  no  yeniden_teslim  exchange  routing_key  kalan  [özellik/başlık]  içerik  kodlama
-  4  true   atolye.olu  atolye.is  1  headers: {x-death…},  is-1  string
-  ↑ yeniden_teslim=true: bu mesaj daha önce verilmiş (ack gelmediği için ya da ölü mektup olarak geri döndü)
-  ↑ ölü mektup! RabbitMQ başlığa neden yazdı: reason=rejected  (rejected = reddedildi, expired = süresi doldu, maxlen = kuyruk doldu)
-  4  false  atolye.olu  atolye.is  0  headers: {x-death…},     is-2  string
-  ↑ ölü mektup! RabbitMQ başlığa neden yazdı: reason=expired  (rejected = reddedildi, expired = süresi doldu, maxlen = kuyruk doldu)
+Reddedildi: is-1
+3 sn bekleniyor (is-2'nin süresi dolsun)...
+Ölü mektup kutusunda: 2 mesaj
 
 ── Sonuç: RabbitMQ'da şu an ne var? ──
 exchange  atolye.olu                 tip: fanout
-kuyruk    atolye.is                  bekleyen: 0  işlenmekte(ack bekliyor): 0   [x-dead-letter-exchange=atolye.olu, x-message-ttl=2000]
+kuyruk    atolye.is2                 bekleyen: 0  işlenmekte(ack bekliyor): 0   [x-dead-letter-exchange=atolye.olu, x-message-ttl=2000]
 kuyruk    atolye.olu-kutusu          bekleyen: 2  işlenmekte(ack bekliyor): 0
 bağ       atolye.olu  --[]-->  atolye.olu-kutusu
 ```
-İki mesaj da ölü mektup kutusunda. RabbitMQ başlığa nedenini yazdı: birini sen reddettin (`rejected`), diğerinin süresi doldu (`expired`). `x-death` başlığı gerçek uygulamada "bu mesaj neden buraya düştü?" sorusunun cevabıdır.
-
-§CIKTI 05-5
-Gerçek çalıştırma çıktısı (mesaj numaraları sende farklı olabilir):
-```
-[hazır] 3 mesaj kuyrukta bekliyor; senin consumer'ın başlıyor...
-Alındı: siparis-1
-Alındı: siparis-2
-Alındı: siparis-3
-[sonuç] Kuyrukta bekleyen mesaj: 0  → hiç mesaj kalmadı (hepsi ack'lendi ya da reddedildi) ✔
-```
-Üç mesaj sırayla işlendi, `ack` verildiği için kuyrukta bekleyen kalmadı. Ack satırını silip tekrar çalıştırırsan son satır `3` olur: mesajlar geri döner.
+İki mesaj da ölü mektup kutusunda: `is-1`'i sen reddettin, `is-2`'nin süresi doldu. Tablodaki `x-dead-letter-exchange` ve `x-message-ttl` asıl kuyruğun argümanlarıdır.
 
 §CIKTI 06-0
 LiteLLM'in gerçekten yüklediği takma adlar (gerçek çıktı):

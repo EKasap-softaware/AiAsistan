@@ -347,194 +347,236 @@ db.siparisler.updateOne({ musteri: 'Ali' }, { $unset: { guncellenme: '' } })
 §EK 05-0
 Her kutunun altındaki **▶ Bu örneği çalıştır** düğmesine bas ve çıktıyı oku.
 
-**Örnek A — "bak ve geri koy"un izi (yeniden_teslim):**
+**Örnek A — bağlantıyı kapatınca kanal da kapanır:**
+```csharp
+var f = new ConnectionFactory { HostName = "localhost", UserName = KULLANICI, Password = SIFRE };
+var hat = await f.CreateConnectionAsync();
+var kanal = await hat.CreateChannelAsync();
+Console.WriteLine($"Önce  -> bağlantı: {hat.IsOpen}, kanal: {kanal.IsOpen}");
+await hat.CloseAsync();
+Console.WriteLine($"Sonra -> bağlantı: {hat.IsOpen}, kanal: {kanal.IsOpen}");
 ```
-rabbitmqadmin declare queue --name atolye.ek1 --durable true
-rabbitmqadmin publish message --routing-key atolye.ek1 --payload bir
-rabbitmqadmin get messages --queue atolye.ek1 --ack-mode ack_requeue_true
-rabbitmqadmin get messages --queue atolye.ek1 --ack-mode ack_requeue_true
-```
-İlk bakışta `false`, ikincide `true`: mesaj geri konunca RabbitMQ "bu daha önce verilmişti" diye işaretler.
+Kanal bağlantının **içinde** yaşar: hat kapanınca ikisi de `False` olur. Bu yüzden önce kanalı, sonra bağlantıyı kapatmak (ya da `await using`) iyi alışkanlıktır.
 
-**Örnek B — kuyruğu boşalt (purge):**
+**Örnek B — yanlış parola ne yapar?**
+```csharp
+try
+{
+    var f = new ConnectionFactory { HostName = "localhost", UserName = KULLANICI, Password = "yanlis-parola" };
+    await using var hat = await f.CreateConnectionAsync();
+    Console.WriteLine("Bağlandı (olmamalıydı)");
+}
+catch (Exception e)
+{
+    Console.WriteLine("Bağlanılamadı: " + e.GetType().Name);
+}
 ```
-rabbitmqadmin declare queue --name atolye.ek2 --durable true
-rabbitmqadmin publish message --routing-key atolye.ek2 --payload a
-rabbitmqadmin publish message --routing-key atolye.ek2 --payload b
-rabbitmqadmin publish message --routing-key atolye.ek2 --payload c
-rabbitmqadmin purge queue --name atolye.ek2
-rabbitmqadmin get messages --queue atolye.ek2 --ack-mode ack_requeue_true
-```
-`purge` kuyruğu silmez, içindeki **mesajları** siler. Sonuç "kuyrukta mesaj yok".
-
-**Örnek C — kalıcı mesaj (persistent):**
-```
-rabbitmqadmin declare queue --name atolye.ek3 --durable true
-rabbitmqadmin publish message --routing-key atolye.ek3 --payload onemli --properties '{"delivery_mode":2}'
-rabbitmqadmin get messages --queue atolye.ek3 --ack-mode ack_requeue_true
-```
-`delivery_mode: 2` = mesaj diske yazılır. Mesajın RabbitMQ yeniden başlayınca kaybolmaması için üç şey birden gerekir: **durable kuyruk + persistent mesaj + ack**.
-
-**Örnek D — hangi kuyruklar var?**
-```
-rabbitmqadmin declare queue --name atolye.ek4 --durable true
-rabbitmqadmin list queues
-```
-(Burada yalnızca `atolye.` ile başlayanları gösteriyoruz.)
+Bağlanma hataları (yanlış parola, RabbitMQ kapalı) **istisna** olarak fırlar. Gerçek uygulamada bunu yakalayıp yeniden denersin.
 
 §EK 05-1
-**Örnek A — aynı anahtara iki kuyruk (ikisi de kopya alır):**
+**Örnek A — adı RabbitMQ'ya seçtir (geçici kuyruk):**
+```csharp
+var q = await kanal.QueueDeclareAsync(queue: "", durable: false, exclusive: true, autoDelete: true);
+Console.WriteLine($"RabbitMQ'nun verdiği ad: {q.QueueName}");
 ```
-rabbitmqadmin declare exchange --name atolye.ek-ex --type direct
-rabbitmqadmin declare queue --name atolye.ek-a --durable true
-rabbitmqadmin declare queue --name atolye.ek-b --durable true
-rabbitmqadmin declare binding --source atolye.ek-ex --destination-type queue --destination atolye.ek-a --routing-key odeme
-rabbitmqadmin declare binding --source atolye.ek-ex --destination-type queue --destination atolye.ek-b --routing-key odeme
-rabbitmqadmin publish message --exchange atolye.ek-ex --routing-key odeme --payload tutar-100
-```
-direct de olsa bir anahtara birden fazla kuyruk bağlanabilir; her ikisi de kopya alır.
+Adı boş bırakırsan RabbitMQ `amq.gen-...` diye benzersiz bir ad uydurur. `exclusive: true` yalnızca bu bağlantıya özel, `autoDelete: true` bağlantı kapanınca kendini siler. Geçici cevap kuyrukları için kullanılır.
 
-**Örnek B — bağ yoksa mesaj kaybolur:**
+**Örnek B — kalıcı (persistent) mesaj:**
+```csharp
+await kanal.QueueDeclareAsync("atolye.ek1", durable: true, exclusive: false, autoDelete: false);
+var ozellik = new BasicProperties { Persistent = true };
+await kanal.BasicPublishAsync(exchange: "", routingKey: "atolye.ek1", mandatory: false, basicProperties: ozellik, body: Encoding.UTF8.GetBytes("onemli"));
+Console.WriteLine("Kalıcı mesaj gönderildi.");
 ```
-rabbitmqadmin declare exchange --name atolye.ek-bos --type direct
-rabbitmqadmin publish message --exchange atolye.ek-bos --routing-key herhangi --payload nerede
-```
-Exchange var ama hiç kuyruğa bağlı değil: `⚠ KAYBOLDU`. Gerçek hayatta bu, "mesajı yolladım ama kimse almadı" hatasının en sık nedenidir.
+`Persistent = true` mesajı diske yazar. Mesajın RabbitMQ yeniden başlayınca kaybolmaması için **üç şey birden** gerekir: durable kuyruk + persistent mesaj + ack.
 
-**Örnek C — varsayılan exchange ile exchange'li yol yan yana:**
+**Örnek C — çok mesaj gönder, say:**
+```csharp
+await kanal.QueueDeclareAsync("atolye.ek2", durable: true, exclusive: false, autoDelete: false);
+for (var i = 1; i <= 100; i++)
+    await kanal.BasicPublishAsync("", "atolye.ek2", Encoding.UTF8.GetBytes($"is-{i}"));
+await Task.Delay(500);
+Console.WriteLine($"Kuyrukta: {(await kanal.QueueDeclarePassiveAsync("atolye.ek2")).MessageCount} mesaj");
 ```
-rabbitmqadmin declare queue --name atolye.ek-c --durable true
-rabbitmqadmin publish message --routing-key atolye.ek-c --payload dogrudan
-rabbitmqadmin publish message --exchange amq.default --routing-key atolye.ek-c --payload ayni-yol
-```
-`amq.default` boş exchange adının yazılışıdır: iki satır aynı şeyi yapar.
 
 §EK 05-2
-**Örnek A — üç dinleyici (e-posta, SMS, istatistik):**
-```
-rabbitmqadmin declare exchange --name atolye.ek-yayin --type fanout
-rabbitmqadmin declare queue --name atolye.ek-eposta --durable true
-rabbitmqadmin declare queue --name atolye.ek-sms --durable true
-rabbitmqadmin declare queue --name atolye.ek-stat --durable true
-rabbitmqadmin declare binding --source atolye.ek-yayin --destination-type queue --destination atolye.ek-eposta --routing-key ""
-rabbitmqadmin declare binding --source atolye.ek-yayin --destination-type queue --destination atolye.ek-sms --routing-key ""
-rabbitmqadmin declare binding --source atolye.ek-yayin --destination-type queue --destination atolye.ek-stat --routing-key ""
-rabbitmqadmin publish message --exchange atolye.ek-yayin --routing-key "" --payload yeni-siparis
-```
-Bir mesaj, üç kopya. Dördüncü bir servis eklemek için yeni kuyruğu bağlaman yeter; gönderen kod hiç değişmez.
-
-**Örnek B — fanout anahtarı yok sayar:**
-```
-rabbitmqadmin declare exchange --name atolye.ek-f --type fanout
-rabbitmqadmin declare queue --name atolye.ek-fq --durable true
-rabbitmqadmin declare binding --source atolye.ek-f --destination-type queue --destination atolye.ek-fq --routing-key ""
-rabbitmqadmin publish message --exchange atolye.ek-f --routing-key ne.yazarsan.yaz --payload gelir
-```
-Anahtar ne olursa olsun mesaj kuyruğa ulaşır. direct ile farkı budur.
-
-§EK 05-3
-**Örnek A — kelime sayısına duyarlı desen:**
-```
-rabbitmqadmin declare exchange --name atolye.ek-t --type topic
-rabbitmqadmin declare queue --name atolye.ek-iptal --durable true
-rabbitmqadmin declare binding --source atolye.ek-t --destination-type queue --destination atolye.ek-iptal --routing-key '*.*.iptal'
-rabbitmqadmin publish message --exchange atolye.ek-t --routing-key siparis.eu.iptal --payload eslesir
-rabbitmqadmin publish message --exchange atolye.ek-t --routing-key siparis.iptal --payload eslesmez
-```
-`*.*.iptal` tam üç kelime ister; ikinci anahtar iki kelime olduğu için `⚠ KAYBOLDU`.
-
-**Örnek B — `#` ile "başlayanlar":**
-```
-rabbitmqadmin declare exchange --name atolye.ek-t2 --type topic
-rabbitmqadmin declare queue --name atolye.ek-odeme --durable true
-rabbitmqadmin declare binding --source atolye.ek-t2 --destination-type queue --destination atolye.ek-odeme --routing-key 'odeme.#'
-rabbitmqadmin publish message --exchange atolye.ek-t2 --routing-key odeme --payload bir-kelime
-rabbitmqadmin publish message --exchange atolye.ek-t2 --routing-key odeme.basarili.visa --payload uc-kelime
-rabbitmqadmin publish message --exchange atolye.ek-t2 --routing-key stok.odeme --payload baska
-```
-`#` sıfır kelimeyi de kapsar: `odeme` de, `odeme.basarili.visa` da eşleşir; `stok.odeme` eşleşmez.
-
-§EK 05-4
-**Örnek A — kuyruk dolunca eski mesaj ölü kutuya gider (x-max-length):**
-```
-rabbitmqadmin declare exchange --name atolye.ek-olu --type fanout
-rabbitmqadmin declare queue --name atolye.ek-kutu --durable true
-rabbitmqadmin declare binding --source atolye.ek-olu --destination-type queue --destination atolye.ek-kutu --routing-key ""
-rabbitmqadmin declare queue --name atolye.ek-dar --durable true --arguments '{"x-max-length":2,"x-dead-letter-exchange":"atolye.ek-olu"}'
-rabbitmqadmin publish message --routing-key atolye.ek-dar --payload m1
-rabbitmqadmin publish message --routing-key atolye.ek-dar --payload m2
-rabbitmqadmin publish message --routing-key atolye.ek-dar --payload m3
-rabbitmqadmin get messages --queue atolye.ek-kutu --ack-mode ack_requeue_true
-```
-Kuyruk en çok 2 mesaj tutar; üçüncü gelince en eski (`m1`) ölü kutuya atılır (`reason=maxlen`).
-
-**Örnek B — ölü mektup exchange'i yoksa reddedilen mesaj kaybolur:**
-```
-rabbitmqadmin declare queue --name atolye.ek-dlxsiz --durable true
-rabbitmqadmin publish message --routing-key atolye.ek-dlxsiz --payload yok-olacak
-rabbitmqadmin get messages --queue atolye.ek-dlxsiz --ack-mode reject_requeue_false
-```
-Sonuç tablosunda kuyruk boş ve başka hiçbir yerde mesaj yok. Ölü mektup kutusu kurmanın nedeni budur.
-
-**Örnek C — reddedip geri koy:**
-```
-rabbitmqadmin declare queue --name atolye.ek-geri --durable true
-rabbitmqadmin publish message --routing-key atolye.ek-geri --payload tekrar-dene
-rabbitmqadmin get messages --queue atolye.ek-geri --ack-mode reject_requeue_true
-rabbitmqadmin get messages --queue atolye.ek-geri --ack-mode ack_requeue_true
-```
-`requeue_true`: mesaj kuyruğun sonuna geri döner, `yeniden_teslim=true` olur. Sürekli hata veren ("zehirli") bir mesajı böyle sonsuza dek geri koyarsan kuyruğu tıkar; bu yüzden retry sayısı sınırlı olmalı.
-
-§EK 05-5
-Aşağıdaki kutulardaki kod parçaları **senin yazdığın bölümün yerine** çalışır (bağlantı, kanal ve 3 mesaj hazır).
+Burada `kanal` ve içinde 3 mesaj olan `kuyruk` hazır.
 
 **Örnek A — ack'i unutursan ne olur?**
 ```csharp
-var c = new AsyncEventingBasicConsumer(ch);
+var c = new AsyncEventingBasicConsumer(kanal);
 c.ReceivedAsync += async (_, ea) =>
 {
     Console.WriteLine("Alındı (ack YOK): " + Encoding.UTF8.GetString(ea.Body.ToArray()));
     await Task.CompletedTask;
 };
-await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
+await kanal.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
 ```
-Sonuçta "Kuyrukta bekleyen mesaj: 3": ack gelmedi, kanal kapanınca RabbitMQ hepsini geri koydu. Gerçek hayatta bu, aynı işin iki kez yapılması demektir; bu yüzden işlem **idempotent** olmalı.
+Sonuçta "Kuyrukta bekleyen mesaj: 3": ack gelmedi, kanal kapanınca RabbitMQ hepsini geri koydu. Gerçek hayatta bu, aynı işin **iki kez** yapılması demektir; işlem **idempotent** olmalı.
 
-**Örnek B — işlenemeyen mesajı reddet (nack):**
+**Örnek B — hata olursa reddet (nack):**
 ```csharp
-var c = new AsyncEventingBasicConsumer(ch);
+var c = new AsyncEventingBasicConsumer(kanal);
 c.ReceivedAsync += async (_, ea) =>
 {
     var m = Encoding.UTF8.GetString(ea.Body.ToArray());
-    if (m == "siparis-2")
+    try
     {
-        Console.WriteLine("İşlenemedi, reddediliyor: " + m);
-        await ch.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);
-        return;
+        if (m == "siparis-2") throw new InvalidOperationException("stok yok");
+        Console.WriteLine("İşlendi: " + m);
+        await kanal.BasicAckAsync(ea.DeliveryTag, multiple: false);
     }
-    Console.WriteLine("Alındı: " + m);
-    await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
+    catch (Exception e)
+    {
+        Console.WriteLine($"Hata ({e.Message}), reddediliyor: {m}");
+        await kanal.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false);
+    }
 };
-await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
+await kanal.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
 ```
-`requeue: false` ve ölü mektup exchange'i yok → `siparis-2` kaybolur. Ölü mektup exchange'i (önceki adım) olsaydı oraya düşerdi.
+Gerçek kalıp budur: **başarılıysa ack, hata varsa nack**. `requeue: false` ve ölü mektup exchange'i yoksa mesaj silinir (sonraki adımlardan birinde bunu ölü mektup kutusuna yönlendireceksin).
 
 **Örnek C — tek tek al (prefetch = 1):**
 ```csharp
-await ch.BasicQosAsync(0, 1, false);
+await kanal.BasicQosAsync(0, 1, false);
 var sayac = 0;
-var c = new AsyncEventingBasicConsumer(ch);
+var c = new AsyncEventingBasicConsumer(kanal);
 c.ReceivedAsync += async (_, ea) =>
 {
     sayac++;
     Console.WriteLine($"{sayac}. mesaj: " + Encoding.UTF8.GetString(ea.Body.ToArray()));
-    await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
+    await kanal.BasicAckAsync(ea.DeliveryTag, multiple: false);
 };
-await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
+await kanal.BasicConsumeAsync(kuyruk, autoAck: false, consumer: c);
 ```
-`BasicQosAsync(0, 1, false)` = "ack vermeden bana ikinci mesajı gönderme". Birden çok consumer olduğunda işi adil dağıtmak için kullanılır.
+`BasicQosAsync(0, 1, false)` = "ack vermeden bana ikinci mesajı gönderme". Birden çok consumer varken işi adil dağıtmak için kullanılır.
+
+§EK 05-3
+**Örnek A — bağ (binding) yoksa mesaj kaybolur:**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-bos", ExchangeType.Direct, durable: true);
+await kanal.QueueDeclareAsync("atolye.ek-yetim", durable: true, exclusive: false, autoDelete: false);
+await kanal.BasicPublishAsync("atolye.ek-bos", "herhangi", Encoding.UTF8.GetBytes("nerede"));
+await Task.Delay(500);
+Console.WriteLine($"Kuyrukta: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-yetim")).MessageCount} mesaj (bağ olmadığı için 0)");
+```
+Exchange de kuyruk da var ama **aralarında kural yok**: mesaj sessizce yok olur.
+
+**Örnek B — kaybı yakala: mandatory + BasicReturn:**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-ex", ExchangeType.Direct, durable: true);
+kanal.BasicReturnAsync += (_, ea) =>
+{
+    Console.WriteLine($"⚠ GERİ DÖNDÜ: etiket '{ea.RoutingKey}' hiçbir kuyruğa uymadı ({ea.ReplyText})");
+    return Task.CompletedTask;
+};
+await kanal.BasicPublishAsync(exchange: "atolye.ek-ex", routingKey: "yok", mandatory: true, basicProperties: new BasicProperties(), body: Encoding.UTF8.GetBytes("x"));
+await Task.Delay(500);
+```
+`mandatory: true` = "kuyruğa ulaşamazsa bana **geri gönder**". Sessiz kayıp yerine olayı yakalarsın.
+
+**Örnek C — bir etikete iki kuyruk (ikisi de kopya alır):**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-d", ExchangeType.Direct, durable: true);
+foreach (var ad in new[] { "atolye.ek-a", "atolye.ek-b" })
+{
+    await kanal.QueueDeclareAsync(ad, durable: true, exclusive: false, autoDelete: false);
+    await kanal.QueueBindAsync(ad, "atolye.ek-d", "odeme");
+}
+await kanal.BasicPublishAsync("atolye.ek-d", "odeme", Encoding.UTF8.GetBytes("tutar-100"));
+await Task.Delay(500);
+foreach (var ad in new[] { "atolye.ek-a", "atolye.ek-b" })
+    Console.WriteLine($"{ad}: {(await kanal.QueueDeclarePassiveAsync(ad)).MessageCount} mesaj");
+```
+
+§EK 05-4
+**Örnek A — geç bağlanan eski mesajı almaz:**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-f", ExchangeType.Fanout, durable: true);
+await kanal.QueueDeclareAsync("atolye.ek-erken", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.ek-erken", "atolye.ek-f", "");
+await kanal.BasicPublishAsync("atolye.ek-f", "", Encoding.UTF8.GetBytes("eski-olay"));
+await kanal.QueueDeclareAsync("atolye.ek-gec", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.ek-gec", "atolye.ek-f", "");
+await kanal.BasicPublishAsync("atolye.ek-f", "", Encoding.UTF8.GetBytes("yeni-olay"));
+await Task.Delay(500);
+Console.WriteLine($"erken: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-erken")).MessageCount} mesaj, gec: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-gec")).MessageCount} mesaj");
+```
+Fanout mesajı **gönderildiği anda** bağlı olan kuyruklara dağıtır. Sonradan bağlanan kuyruk geçmişi görmez (erken 2, geç 1).
+
+**Örnek B — fanout etiketi yok sayar:**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-f2", ExchangeType.Fanout, durable: true);
+await kanal.QueueDeclareAsync("atolye.ek-q", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.ek-q", "atolye.ek-f2", "");
+await kanal.BasicPublishAsync("atolye.ek-f2", "ne.yazarsan.yaz", Encoding.UTF8.GetBytes("gelir"));
+await Task.Delay(500);
+Console.WriteLine($"Kuyrukta: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-q")).MessageCount} mesaj");
+```
+
+§EK 05-5
+**Örnek A — kelime sayısına duyarlı desen:**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-t", ExchangeType.Topic, durable: true);
+await kanal.QueueDeclareAsync("atolye.ek-iptal", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.ek-iptal", "atolye.ek-t", "*.*.iptal");
+await kanal.BasicPublishAsync("atolye.ek-t", "siparis.eu.iptal", Encoding.UTF8.GetBytes("eslesir"));
+await kanal.BasicPublishAsync("atolye.ek-t", "siparis.iptal", Encoding.UTF8.GetBytes("eslesmez"));
+await Task.Delay(500);
+Console.WriteLine($"Kuyrukta: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-iptal")).MessageCount} mesaj (1 bekleniyor)");
+```
+`*.*.iptal` tam **üç** kelime ister; `siparis.iptal` iki kelime olduğu için uymaz.
+
+**Örnek B — `#` sıfır kelimeyi de kapsar:**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-t2", ExchangeType.Topic, durable: true);
+await kanal.QueueDeclareAsync("atolye.ek-odeme", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.ek-odeme", "atolye.ek-t2", "odeme.#");
+foreach (var anahtar in new[] { "odeme", "odeme.basarili", "odeme.basarili.visa", "stok.odeme" })
+    await kanal.BasicPublishAsync("atolye.ek-t2", anahtar, Encoding.UTF8.GetBytes(anahtar));
+await Task.Delay(500);
+Console.WriteLine($"odeme.# kuyruğu: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-odeme")).MessageCount} mesaj (3 bekleniyor)");
+```
 
 §EK 05-6
+**Örnek A — kuyruk dolunca eski mesaj ölü kutuya gider (x-max-length):**
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.ek-olu", ExchangeType.Fanout, durable: true);
+await kanal.QueueDeclareAsync("atolye.ek-kutu", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.ek-kutu", "atolye.ek-olu", "");
+var arg = new Dictionary<string, object?> { ["x-max-length"] = 2, ["x-dead-letter-exchange"] = "atolye.ek-olu" };
+await kanal.QueueDeclareAsync("atolye.ek-dar", durable: true, exclusive: false, autoDelete: false, arguments: arg);
+foreach (var m in new[] { "m1", "m2", "m3" })
+    await kanal.BasicPublishAsync("", "atolye.ek-dar", Encoding.UTF8.GetBytes(m));
+await Task.Delay(700);
+Console.WriteLine($"dar kuyruk: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-dar")).MessageCount} mesaj, ölü kutu: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-kutu")).MessageCount} mesaj");
+```
+Kuyruk en çok 2 mesaj tutar; üçüncü gelince en eski (`m1`) ölü kutuya atılır.
+
+**Örnek B — ölü mektup exchange'i yoksa reddedilen mesaj yok olur:**
+```csharp
+await kanal.QueueDeclareAsync("atolye.ek-dlxsiz", durable: true, exclusive: false, autoDelete: false);
+await kanal.BasicPublishAsync("", "atolye.ek-dlxsiz", Encoding.UTF8.GetBytes("yok-olacak"));
+await Task.Delay(300);
+var r = await kanal.BasicGetAsync("atolye.ek-dlxsiz", autoAck: false);
+await kanal.BasicNackAsync(r!.DeliveryTag, multiple: false, requeue: false);
+await Task.Delay(300);
+Console.WriteLine($"Kuyrukta: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-dlxsiz")).MessageCount} mesaj, başka hiçbir yerde de yok");
+```
+Ölü mektup kutusu kurmanın nedeni budur: reddedilen mesajı **inceleyebilmek**.
+
+**Örnek C — mesaj başına süre (Expiration):**
+```csharp
+await kanal.QueueDeclareAsync("atolye.ek-sureli", durable: true, exclusive: false, autoDelete: false);
+var ozellik = new BasicProperties { Expiration = "800" };
+await kanal.BasicPublishAsync(exchange: "", routingKey: "atolye.ek-sureli", mandatory: false, basicProperties: ozellik, body: Encoding.UTF8.GetBytes("kisa-omurlu"));
+Console.WriteLine($"Hemen: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-sureli")).MessageCount} mesaj");
+await Task.Delay(1500);
+Console.WriteLine($"1,5 sn sonra: {(await kanal.QueueDeclarePassiveAsync("atolye.ek-sureli")).MessageCount} mesaj");
+```
+`x-message-ttl` kuyruktaki **tüm** mesajlar için, `Expiration` ise **tek mesaj** için süre koyar.
+
+§EK 05-7
 **Örnek — e-posta gönderen consumer:**
 ```csharp
 public record KullaniciKaydoldu(Guid Id, string Eposta);
@@ -550,9 +592,9 @@ public class EpostaConsumer(IEpostaServisi eposta) : IConsumer<KullaniciKaydoldu
 ```
 Kayıt: `x.AddConsumer<EpostaConsumer>();`. Mesaj gönderme: `await publishEndpoint.Publish(new KullaniciKaydoldu(id, eposta));`
 
-**RabbitMQ.Client ile karşılaştır:** orada kanalı, ack'i ve hata yönetimini sen yazdın; burada bunların hepsi MassTransit'te. Mesaj tipi `record`, işleyen `IConsumer<T>`: bu kadar.
+**Karşılaştır:** `RabbitMQ.Client`'ta kanalı, `BasicConsume`'u, ack/nack'i **sen** yazdın; burada hepsi MassTransit'te. Mesaj tipi `record`, işleyen `IConsumer<T>`.
 
-§EK 05-7
+§EK 05-8
 **Örnek A — sabit aralık:**
 ```csharp
 e.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));   // 3 kez, 5 sn arayla

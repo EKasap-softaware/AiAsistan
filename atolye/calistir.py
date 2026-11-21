@@ -19,12 +19,12 @@ SEVIYE = {"git": ["02-0", "02-1", "02-3", "02-4"],
           "mongo": ["04-0", "04-1", "04-2", "04-3", "04-4", "04-5"],
           "docker": ["03-0", "03-2", "03-3"],
           "curl": ["06-2", "08-1"],
-          "rabbit": ["05-0", "05-1", "05-2", "05-3", "05-4"],
-          "cs": ["05-5", "07-0", "07-1", "07-2"],
+          "rabbit": [],
+          "cs": ["05-0", "05-1", "05-2", "05-3", "05-4", "05-5", "05-6", "07-0", "07-1", "07-2"],
           "sozdizimi": ["06-0", "06-1", "09-0", "09-1", "09-2", "09-3", "09-4", "10-3"]}
 DESTEK = sorted({k for v in SEVIYE.values() for k in v})
 # Sayfadaki "Örnek" ve "Başka örnekler" kutularının altına ▶ düğmesi konan adımlar (örnekler birebir çalışır)
-ORNEK_OK = ["05-0", "05-1", "05-2", "05-3", "05-4", "05-5"]
+ORNEK_OK = ["05-0", "05-1", "05-2", "05-3", "05-4", "05-5", "05-6"]
 
 
 def _env():
@@ -558,62 +558,75 @@ _SURUCU = {
 }
 
 
-_RAB_CS_ON = '''using RabbitMQ.Client; using RabbitMQ.Client.Events; using System.Text;
+_RAB_CS_BASLIK = """using RabbitMQ.Client; using RabbitMQ.Client.Events; using System.Text;
 Console.OutputEncoding = Encoding.UTF8;
-var fabrika = new ConnectionFactory { HostName = "localhost", UserName = Environment.GetEnvironmentVariable("RAB_U")!, Password = Environment.GetEnvironmentVariable("RAB_P")! };
+const string KULLANICI = "@@U@@"; const string SIFRE = "@@P@@";
+"""
+_RAB_CS_BAGLANTI = """var fabrika = new ConnectionFactory { HostName = "localhost", UserName = KULLANICI, Password = SIFRE };
 await using var baglanti = await fabrika.CreateConnectionAsync();
-await using var ch = await baglanti.CreateChannelAsync();
-const string kuyruk = "atolye.cs";
-await ch.QueueDeclareAsync(kuyruk, durable: true, exclusive: false, autoDelete: false);
+await using var kanal = await baglanti.CreateChannelAsync();
+"""
+_RAB_CS_IS = """const string kuyruk = "atolye.is";
+await kanal.QueueDeclareAsync(kuyruk, durable: true, exclusive: false, autoDelete: false);
 foreach (var m in new[] { "siparis-1", "siparis-2", "siparis-3" })
-    await ch.BasicPublishAsync("", kuyruk, Encoding.UTF8.GetBytes(m));
-Console.WriteLine("[hazır] 3 mesaj kuyrukta bekliyor; senin consumer'ın başlıyor...");
-// ======== SENİN KODUN BAŞLIYOR ========
-'''
-_RAB_CS_SON = '''
-// ======== SENİN KODUN BİTTİ ========
+    await kanal.BasicPublishAsync("", kuyruk, Encoding.UTF8.GetBytes(m));
+Console.WriteLine("[hazır] atolye.is kuyruğunda 3 mesaj bekliyor.");
+"""
+_RAB_CS_IS_SON = """
 await Task.Delay(1500);
-await ch.CloseAsync();   // ack verilmeyen mesajlar kuyruğa GERİ DÖNER
-await using var ch2 = await baglanti.CreateChannelAsync();
-var durum = await ch2.QueueDeclarePassiveAsync(kuyruk);
-Console.WriteLine(durum.MessageCount == 0 ? "[sonuç] Kuyrukta bekleyen mesaj: 0  → hiç mesaj kalmadı (hepsi ack'lendi ya da reddedildi) ✔"
-    : $"[sonuç] Kuyrukta bekleyen mesaj: {durum.MessageCount}  → ack vermediğin mesajlar kuyruğa geri döndü (at-least-once!)");
-await ch2.QueueDeleteAsync(kuyruk);
-'''
+await kanal.CloseAsync();   // ack verilmeyen mesajlar kuyruğa GERİ DÖNER
+await using var kanal2 = await baglanti.CreateChannelAsync();
+var durum = await kanal2.QueueDeclarePassiveAsync(kuyruk);
+Console.WriteLine(durum.MessageCount == 0 ? "[sonuç] Kuyrukta bekleyen mesaj: 0  -> hiç mesaj kalmadı (hepsi ack'lendi ya da reddedildi) ✔"
+    : $"[sonuç] Kuyrukta bekleyen mesaj: {durum.MessageCount}  -> ack vermediğin mesajlar kuyruğa geri döndü (at-least-once!)");
+"""
+_RAB_CS_YASAK = re.compile(r"System\.IO|Process\.|File\.|Directory\.|HttpClient|Environment\.|Registry|DllImport|Assembly\.|Socket|"
+                           r"Delete\w*Async|Purge\w*Async|\.Uri\b|AmqpTcpEndpoint|Endpoint|ai-istegi|sohbet-tamamlandi|MassTransit|"
+                           r"HostName\s*=\s*\"(?!localhost\")")
 
 
-def _cs_rabbit(kod):
-    if re.search(r"System\.IO|Process\.|File\.|Directory\.|HttpClient|Environment\.|Registry|DllImport|Assembly\.|ConnectionFactory|Socket|Delete\w*Async", kod):
-        return False, "Güvenlik: bağlantı/kanal hazır (`ch`, `kuyruk`); yeni bağlantı, dosya, süreç ya da silme kodu çalıştırılmaz."
+def _cs_rabbit(key, kod):
+    if _RAB_CS_YASAK.search(kod):
+        return False, ("Güvenlik: bu atölyede yalnızca localhost'a bağlanabilirsin; dosya/süreç/ağ kodu, silme/boşaltma ve "
+                       "gerçek kuyruk adları (ai-istegi...) engelli. Kuyruk/exchange adların `atolye.` ile başlasın.")
     env = _env()
     d = KUM / "cs-rabbit"
     d.mkdir(parents=True, exist_ok=True)
     (d / "cs.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType>'
                                  '<TargetFramework>net9.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>'
-                                 '<Nullable>enable</Nullable></PropertyGroup>'
+                                 '<Nullable>enable</Nullable><TreatWarningsAsErrors>false</TreatWarningsAsErrors><WarningsAsErrors></WarningsAsErrors><NoWarn>CS8602;CS8604;CS8600;CS0219;CS0168;CS1998</NoWarn></PropertyGroup>'
                                  '<ItemGroup><PackageReference Include="RabbitMQ.Client" Version="7.2.2" /></ItemGroup></Project>', "utf-8")
-    kaynak = _RAB_CS_ON + kod + "\n" + _RAB_CS_SON
-    (d / "Program.cs").write_text(kaynak, "utf-8")
-    ofset = _RAB_CS_ON.count("\n")
-    e = dict(os.environ, RAB_U=env.get("RABBITMQ_USER", ""), RAB_P=env.get("RABBITMQ_PASSWORD", ""))
+    on = _RAB_CS_BASLIK.replace("@@U@@", env.get("RABBITMQ_USER", "")).replace("@@P@@", env.get("RABBITMQ_PASSWORD", ""))
+    son = ""
+    if key != "05-0":
+        on += _RAB_CS_BAGLANTI
+    if key == "05-2":
+        on += _RAB_CS_IS
+        son = _RAB_CS_IS_SON
+    on += "// ======== SENİN KODUN BAŞLIYOR ========\n"
+    (d / "Program.cs").write_text(on + kod + "\n" + son, "utf-8")
+    ofset = on.count("\n")
     _rab_temizle(env)
+    out = ""
     try:
-        rc, out = _calistir(["dotnet", "run", "--nologo", "-v", "q"], cwd=str(d), sure=180, env=e)
+        rc, out = _calistir(["dotnet", "run", "--nologo", "-v", "q"], cwd=str(d), sure=180)
+        durum = _rab_durum(env) if rc == 0 else ""
     finally:
         _rab_temizle(env)
     out = _maske(out, [env.get("RABBITMQ_PASSWORD", "")])
     if rc == 0:
-        return True, out.strip() or "(çıktı yok)"
-    hata = [s.strip() for s in out.splitlines() if "error" in s and "Program.cs(" in s]
+        return True, (out.strip() or "(çıktı yok)") + ("\n\n" + durum if durum else "") + "\n(deneme nesneleri temizlendi; her çalıştırma sıfırdan başlar)"
+    hata = [x.strip() for x in out.splitlines() if "error" in x and "Program.cs(" in x]
     def _sat(m):
         return f"satır {max(1, int(m.group(1)) - ofset)}: "
     hata = sorted(set(re.sub(r"^.*?Program\.cs\((\d+),\d+\):\s*", _sat, h).split(" [")[0] for h in hata))[:6]
-    return False, "✘ Derleme/çalışma hatası:\n" + "\n".join(hata or [out[-600:]])
+    kes = out.strip().splitlines()
+    return False, "✘ Derleme/çalışma hatası:\n" + "\n".join(hata or kes[:6] + kes[-6:])
 
 
 def cs(key, kod):
-    if key == "05-5":
-        return _cs_rabbit(kod)
+    if key.startswith("05-"):
+        return _cs_rabbit(key, kod)
     if re.search(r"System\.IO|Process\.|File\.|Directory\.|HttpClient|Environment\.|Registry|DllImport|Assembly\.", kod):
         return False, "Güvenlik: bu atölyede dosya/ağ/süreç erişimi olan C# çalıştırılmaz."
     d = KUM / "cs-calistir"

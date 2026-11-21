@@ -143,138 +143,206 @@ db.siparisler.updateOne({ musteri: 'Can' }, { $set: { durum: 'tamamlandi', gunce
 `$set` yazmazsan Mongo tüm belgeyi değiştirmeye çalışır → hata.
 
 §NASIL 05-0
-**Hedef:** 1 kuyruk aç → 2 mesaj bırak → bakıp geri koy → alıp sil.
+**Hedef:** RabbitMQ'ya bağlan, kanal aç, ikisinin de açık olduğunu yazdır. 5 satır.
 
-Her komutun kalıbı aynı: `rabbitmqadmin <fiil> <nesne> --seçenek değer`
-
+**Satır 1 — ayarlar (henüz bağlanmaz):**
+```csharp
+var fabrika = new ConnectionFactory { HostName = "localhost", UserName = KULLANICI, Password = SIFRE };
+```
 | Parça | Anlamı |
 |---|---|
-| `rabbitmqadmin` | RabbitMQ'nun komut satırı aracı |
-| `declare queue` | "kuyruk oluştur" (fiil + nesne) |
-| `--name atolye.siparis` | kuyruğun adı |
-| `--durable true` | RabbitMQ yeniden başlasa da kuyruk kalsın |
+| `var fabrika` | ayar nesnesinin adı (istediğini yaz) |
+| `new ConnectionFactory { ... }` | "bağlantı ayarı" nesnesi oluştur, süslü parantezde özellikleri doldur |
+| `HostName = "localhost"` | RabbitMQ bu bilgisayarda çalışıyor |
+| `UserName = KULLANICI` / `Password = SIFRE` | giriş bilgisi (sayfada hazır sabitler) |
 
-**Satır satır yaz:**
-1. Hazır satır: `rabbitmqadmin declare queue --name atolye.siparis --durable true`
-2. Mesaj bırak (iki ayrı satır, yalnızca `--payload` değişir):
-   `rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1`
-   - `--routing-key` = kuyruğun adı (exchange yazmadığın için varsayılan exchange kuyruğu adından bulur).
-3. Bak ama silme: `rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true`
-4. Al ve sil: `rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false`
-   - `--count 2` = en fazla 2 mesaj getir.
+**Satır 2 — bağlan:**
+```csharp
+await using var baglanti = await fabrika.CreateConnectionAsync();
+```
+- `await` = "bitene kadar bekle" (ağ işi), `CreateConnectionAsync()` = bağlan.
+- `await using var` = "bu nesneyi işim bitince otomatik kapat".
 
+**Satır 3 — kanal aç:** Satır 2'nin kardeşi; `fabrika` yerine `baglanti`, `CreateConnectionAsync` yerine `CreateChannelAsync`:
+```csharp
+await using var kanal = await baglanti.CreateChannelAsync();
 ```
-rabbitmqadmin declare queue --name atolye.siparis --durable true
-rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-1
-rabbitmqadmin publish message --routing-key atolye.siparis --payload siparis-2
-rabbitmqadmin get messages --queue atolye.siparis --ack-mode ack_requeue_true
-rabbitmqadmin get messages --queue atolye.siparis --count 2 --ack-mode ack_requeue_false
+**Satır 4-5 — yazdır:**
+```csharp
+Console.WriteLine($"Bağlantı açık mı: {baglanti.IsOpen}");
+Console.WriteLine($"Kanal açık mı: {kanal.IsOpen}, kanal no: {kanal.ChannelNumber}");
 ```
-**Sonucu oku:** ▶ Çalıştır'a basınca üçüncü komuttan sonra `yeniden_teslim false`, dördüncüden sonra `true` göreceksin: bakıp geri koyduğun mesaj "bir kez verilmişti" diye işaretlenir.
+`$"..."` içinde `{ }` arasına değişken yazarsan değeri metne girer.
+
+**Sık hata:** `await` yazmayı unutursan `baglanti` bir "söz" (Task) olur, `.CreateChannelAsync` bulunamaz. Her `...Async` çağrısının başına `await`.
+
+**Beklenen çıktı:** `Bağlantı açık mı: True` ve `Kanal açık mı: True, kanal no: 1`.
 
 §NASIL 05-1
-**Hedef:** exchange + iki kuyruk + iki bağ + iki mesaj (biri doğru, biri yanlış anahtar).
+**Hedef:** kuyruk aç, 2 mesaj gönder, kaç mesaj olduğunu say. Bağlantı ve `kanal` hazır.
 
-Sırayı ezberle: **önce exchange, sonra kuyruklar, sonra bağlar, en son mesaj.** Bağ kurmadan mesaj yollarsan mesaj kaybolur.
-
-| Komut | Ne yapar |
-|---|---|
-| `declare exchange --name X --type direct` | postacıyı oluştur (`direct` = anahtar birebir eşleşsin) |
-| `declare queue --name K --durable true` | kutuyu oluştur |
-| `declare binding ...` | kuralı yaz (aşağıda) |
-| `publish message --exchange X --routing-key A --payload P` | mesajı postacıya ver |
-
-**Bağ komutunun 4 parçası** (en çok yanlış yazılan satır):
-- `--source atolye.siparisler` → hangi exchange'den geliyor
-- `--destination-type queue` → hedef bir kuyruk
-- `--destination atolye.kargo` → hangi kuyruğa gidecek
-- `--routing-key kargo` → hangi anahtarla gelen mesaj
-
+**Adım 1 — kuyruk:**
+```csharp
+await kanal.QueueDeclareAsync(queue: "atolye.siparis", durable: true, exclusive: false, autoDelete: false);
 ```
-rabbitmqadmin declare binding --source atolye.siparisler --destination-type queue --destination atolye.kargo --routing-key kargo
-```
-Fatura için aynı satırı kopyala; `atolye.kargo` ve `kargo` yerine `atolye.fatura` ve `fatura` yaz.
+Hepsini sırayla oku: "kanal üzerinden kuyruk bildir: adı atolye.siparis, kalıcı, özel değil, kendiliğinden silinmesin". Başındaki `queue:` gibi adlar **adlandırılmış parametre**, hangi değerin ne olduğunu belli eder.
 
-**Sonucu oku:** `atolye.kargo` kuyruğunda `bekleyen: 1`, `atolye.fatura`'da `0` olmalı. Yanlış anahtarlı mesaj için `⚠ KAYBOLDU` uyarısı çıkar; hata mesajı gelmez, RabbitMQ'nun sessiz davranışı budur.
+**Adım 2 — iki mesaj için döngü:** aynı kodu iki kez yazmak yerine:
+```csharp
+foreach (var mesaj in new[] { "siparis-1", "siparis-2" })
+{
+    ...
+}
+```
+"Dizideki her eleman için, süslü parantezin içini çalıştır; eleman `mesaj` adıyla elinde."
+
+**Adım 3 — döngünün içi:** (1) metni byte'a çevir, (2) gönder, (3) yazdır:
+```csharp
+var govde = Encoding.UTF8.GetBytes(mesaj);
+await kanal.BasicPublishAsync(exchange: "", routingKey: "atolye.siparis", body: govde);
+Console.WriteLine($"Gönderildi: {mesaj}");
+```
+- `exchange: ""` varsayılan exchange; `routingKey` **kuyruğun adı** olmalı (yoksa mesaj kaybolur).
+
+**Adım 4 — say:** önce bekle (gönderme ateşle-unut):
+```csharp
+await Task.Delay(500);
+var durum = await kanal.QueueDeclarePassiveAsync("atolye.siparis");
+Console.WriteLine($"Kuyrukta bekleyen mesaj: {durum.MessageCount}");
+```
+**Beklenen çıktı:** `Gönderildi: siparis-1`, `Gönderildi: siparis-2`, `Kuyrukta bekleyen mesaj: 2`.
+
+Sık hata: `Task.Delay` yazmazsan sayı 1 ya da 0 çıkabilir (yarış durumu).
 
 §NASIL 05-2
-**Hedef:** bir mesaj, iki kuyruğa kopya.
+**Hedef:** önce BasicGet ile 1 mesaj al, sonra consumer ile kalanları. `kanal` ve `kuyruk` hazır.
 
-1. `declare exchange --name atolye.olaylar --type fanout` (hazır)
-2. İki kuyruk: `declare queue --name atolye.eposta --durable true` ve aynısı `atolye.istatistik` için.
-3. İki bağ. 05-1'deki bağ satırının aynısı, ama anahtar boş:
-   `rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.eposta --routing-key ""`
-   - fanout anahtara bakmaz ama `--routing-key` seçeneği **zorunlu**; bu yüzden boş tırnak: `""`.
-4. **Tek** mesaj: `rabbitmqadmin publish message --exchange atolye.olaylar --routing-key "" --payload yeni-uye`
+**Bölüm 1 — çekme (pull), 6 satır:**
+```csharp
+var tek = await kanal.BasicGetAsync(kuyruk, autoAck: false);
+if (tek != null)
+{
+    Console.WriteLine($"BasicGet ile alındı: {Encoding.UTF8.GetString(tek.Body.ToArray())}");
+    await kanal.BasicAckAsync(tek.DeliveryTag, multiple: false);
+}
+```
+- `autoAck: false`: "ben onaylayana kadar silme".
+- Kuyruk boşsa `tek` `null` olur, o yüzden `if (tek != null)`.
+- `tek.Body.ToArray()` = gövde byte dizisi; `GetString` onu metne çevirir.
+- `BasicAckAsync(tek.DeliveryTag, ...)` = "şu numaralı mesajı işledim".
 
+**Bölüm 2 — dinleme (push), 3 parça:**
+1. `var tuketici = new AsyncEventingBasicConsumer(kanal);` → tüketici nesnesi.
+2. `tuketici.ReceivedAsync += async (_, ea) => { ... };` → "mesaj gelince bunu çalıştır". Süslü parantezin içine **Bölüm 1'deki üç işin aynısını** yaz, yalnızca `tek` yerine `ea`:
+```csharp
+var metin = Encoding.UTF8.GetString(ea.Body.ToArray());
+Console.WriteLine($"Consumer ile alındı: {metin}");
+await kanal.BasicAckAsync(ea.DeliveryTag, multiple: false);
 ```
-rabbitmqadmin declare binding --source atolye.olaylar --destination-type queue --destination atolye.istatistik --routing-key ""
-```
-**Sonucu oku:** iki kuyrukta da `bekleyen: 1`. Tek mesaj yolladın, iki kopya oluştu: fanout'un işi bu.
+3. En sonda dinlemeyi başlat: `await kanal.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);`
+
+**Sıra önemli:** olayı (`+=`) **önce** bağla, `BasicConsumeAsync`'i **sonra** çağır.
+
+**Beklenen çıktı:** siparis-1 BasicGet ile, siparis-2 ve siparis-3 consumer ile; en altta `Kuyrukta bekleyen mesaj: 0`. Ack satırını silersen son satır `3` olur (deney yap).
 
 §NASIL 05-3
-**Hedef:** `*.hata` yalnızca hataları, `#` her şeyi toplasın.
+**Hedef:** exchange + 2 kuyruk + 2 binding + 2 mesaj (biri yanlış etiketli). Sıra: **exchange → kuyruklar → binding'ler → mesajlar.**
 
-| Desen | Neyle eşleşir | Eşleşmez |
+| # | Ne | Kod |
 |---|---|---|
-| `*.hata` | `odeme.hata`, `stok.hata` | `odeme.bilgi`, `a.b.hata` |
-| `odeme.*` | `odeme.hata`, `odeme.bilgi` | `stok.hata` |
-| `#` | her şey | (yok) |
+| 1 | exchange | `await kanal.ExchangeDeclareAsync(exchange: "atolye.siparisler", type: ExchangeType.Direct, durable: true);` |
+| 2 | kuyruk | `await kanal.QueueDeclareAsync("atolye.kargo", durable: true, exclusive: false, autoDelete: false);` (fatura için aynısı) |
+| 3 | binding | `await kanal.QueueBindAsync(queue: "atolye.kargo", exchange: "atolye.siparisler", routingKey: "kargo");` |
+| 4 | mesaj | `await kanal.BasicPublishAsync(exchange: "atolye.siparisler", routingKey: "kargo", body: Encoding.UTF8.GetBytes("paket-1"));` |
 
-- `*` = tam 1 kelime, `#` = 0 veya daha çok kelime. Kelimeler noktayla ayrılır.
-- Deseni **tek tırnak** içine yaz: `--routing-key '*.hata'`
+**Binding satırı 3 parça:** hangi **kuyruk**, hangi **exchange**'den, hangi **etiketle** gelenleri alsın. Fatura için kuyruk `atolye.fatura`, etiket `fatura`.
 
-Adımlar:
-1. Hazır satır: exchange (`--type topic`).
-2. İki kuyruk: `atolye.hatalar`, `atolye.tum`.
-3. İki bağ: hatalar için `'*.hata'`, tum için `'#'`.
-4. Üç mesaj (anahtar sırasıyla): `odeme.hata` → m1, `odeme.bilgi` → m2, `stok.hata` → m3.
+**Bilerek yanlış mesaj:** 4. satırın aynısı, ama etiket `"yok"` ve içerik `"kayip"`. Hiçbir binding `yok` demediği için bu mesaj hiçbir kuyruğa girmez.
 
+**Sayma:**
+```csharp
+await Task.Delay(500);
+Console.WriteLine($"kargo kuyruğu : {(await kanal.QueueDeclarePassiveAsync("atolye.kargo")).MessageCount} mesaj");
 ```
-rabbitmqadmin publish message --exchange atolye.log --routing-key odeme.hata --payload m1
-```
-**Sonucu oku:** hatalar = 2 (m1, m3), tum = 3. Hesabı kendin yap: `odeme.bilgi` `*.hata`'ya uymaz, ama `#` her şeye uyar.
+(Fatura için `atolye.kargo` yerine `atolye.fatura`.) `(await ...)` parantezi "önce bekle, sonra `.MessageCount`'a bak" demek.
+
+**Beklenen çıktı:** kargo 1, fatura 0. `kayip` mesajı hiçbir yerde yok: sessiz kayıp.
 
 §NASIL 05-4
-**Hedef:** ölü mektup kutusu kur, bir mesajı reddet, birinin süresi dolsun.
+**Hedef:** bir mesaj, iki kuyruğa kopya.
 
-Sıra: **önce ölü mektup tarafı, sonra asıl kuyruk** (asıl kuyruk, var olan bir exchange'i gösteriyor).
-1. Hazır: `declare exchange --name atolye.olu --type fanout`
-2. Kutu + bağ: `declare queue --name atolye.olu-kutusu --durable true`, sonra `declare binding --source atolye.olu --destination-type queue --destination atolye.olu-kutusu --routing-key ""`
-3. Asıl kuyruk, argümanı **tek tırnak** içine alarak:
-   `rabbitmqadmin declare queue --name atolye.is --durable true --arguments '{"x-dead-letter-exchange":"atolye.olu","x-message-ttl":2000}'`
-   - JSON'da anahtarlar çift tırnaklı, `2000` tırnaksız (sayı, milisaniye).
-4. İki mesaj yolla: `is-1`, `is-2` (anahtar = `atolye.is`).
-5. Reddet: `rabbitmqadmin get messages --queue atolye.is --ack-mode reject_requeue_false` → kuyruk sıralı olduğu için **ilk** mesaj (`is-1`) reddedilir.
-6. `sleep 3` satırı: kalan `is-2` 2 saniyede dolar.
-7. Kutuya bak: `rabbitmqadmin get messages --queue atolye.olu-kutusu --count 5 --ack-mode ack_requeue_true`
+İki kuyruk için aynı kodu iki kez yazmak yerine **döngü** kullan:
+```csharp
+foreach (var ad in new[] { "atolye.eposta", "atolye.istatistik" })
+{
+    await kanal.QueueDeclareAsync(ad, durable: true, exclusive: false, autoDelete: false);
+    await kanal.QueueBindAsync(queue: ad, exchange: "atolye.olaylar", routingKey: "");
+}
+```
+Parçalar:
+1. Önce exchange (döngünün **üstünde**): `await kanal.ExchangeDeclareAsync("atolye.olaylar", ExchangeType.Fanout, durable: true);`
+2. Döngü: her ad için kuyruk aç + exchange'e bağla. `routingKey: ""` fanout etikete bakmaz, ama parametre boş da olsa yazılmak zorunda.
+3. **Tek** mesaj: `await kanal.BasicPublishAsync("atolye.olaylar", "", Encoding.UTF8.GetBytes("yeni-uye"));`
+4. Sayma döngüsü: `await Task.Delay(500);` ve her ad için `QueueDeclarePassiveAsync(ad)` + `.MessageCount`.
 
-**Sonucu oku:** iki mesaj da kutuda; birinin sebebi `rejected`, diğerinin `expired`.
+**Beklenen çıktı:** `atolye.eposta: 1 mesaj` ve `atolye.istatistik: 1 mesaj`. Bir kez yolladın, iki kopya oluştu.
 
 §NASIL 05-5
-**Hedef:** 5 satırlık consumer. `ch` ve `kuyruk` hazır geliyor.
+**Hedef:** `*.hata` yalnızca hataları, `#` her şeyi toplasın.
 
-1. Consumer nesnesi: `var tuketici = new AsyncEventingBasicConsumer(ch);` → "bu kanalda mesaj dinleyecek nesne".
-2. Mesaj gelince çalışacak kod: `tuketici.ReceivedAsync += async (_, ea) => { ... };`
-   - `+=` "bu olaya şu kodu ekle" demek. `_` kullanmadığın ilk parametre, `ea` mesajın kendisi.
-3. Süslü parantez içinde 3 iş:
-   - gövdeyi metne çevir: `var metin = Encoding.UTF8.GetString(ea.Body.ToArray());` (mesaj byte dizisi olarak gelir)
-   - yazdır: `Console.WriteLine($"Alındı: {metin}");`
-   - **ack**: `await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);` (`DeliveryTag` = mesajın numarası)
-4. Dinlemeyi başlat: `await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);`
+**Desen cetveli:**
+| Desen | Uyar | Uymaz |
+|---|---|---|
+| `*.hata` | `odeme.hata`, `stok.hata` | `odeme.bilgi`, `a.b.hata` |
+| `#` | her şey | (yok) |
+
+Kod sırası:
+1. `await kanal.ExchangeDeclareAsync("atolye.log", ExchangeType.Topic, durable: true);`
+2. İki kuyruk: `atolye.hatalar`, `atolye.tum` (`QueueDeclareAsync`).
+3. İki binding (kuyruk, exchange, desen sırasıyla):
+   - `await kanal.QueueBindAsync("atolye.hatalar", "atolye.log", "*.hata");`
+   - `await kanal.QueueBindAsync("atolye.tum", "atolye.log", "#");`
+4. Üç mesajı **tuple dizisi** ile döngüde gönder:
 ```csharp
-var tuketici = new AsyncEventingBasicConsumer(ch);
-tuketici.ReceivedAsync += async (_, ea) =>
-{
-    var metin = Encoding.UTF8.GetString(ea.Body.ToArray());
-    Console.WriteLine($"Alındı: {metin}");
-    await ch.BasicAckAsync(ea.DeliveryTag, multiple: false);
-};
-await ch.BasicConsumeAsync(kuyruk, autoAck: false, consumer: tuketici);
+foreach (var (anahtar, icerik) in new[] { ("odeme.hata", "m1"), ("odeme.bilgi", "m2"), ("stok.hata", "m3") })
+    await kanal.BasicPublishAsync("atolye.log", anahtar, Encoding.UTF8.GetBytes(icerik));
 ```
-Deney: ack satırını sil, ▶ Çalıştır'a bas; mesajların kuyruğa geri döndüğünü göreceksin. Sonra geri ekle.
+(Her eleman bir çift: etiket + içerik; döngü onları `anahtar` ve `icerik` diye açar.)
+5. `await Task.Delay(500);` ve iki sayıyı yazdır.
+
+**Hesabı kendin yap:** `odeme.hata` → hatalar ✔ tum ✔; `odeme.bilgi` → yalnız tum; `stok.hata` → ikisi. Sonuç: hatalar 2, tum 3.
 
 §NASIL 05-6
+**Hedef:** ölü mektup kutusu kur, bir mesajı reddet, diğerinin süresi dolsun. **Önce ölü mektup tarafını, sonra asıl kuyruğu** kur (asıl kuyruk var olan bir exchange'i gösteriyor).
+
+1. Ölü mektup tarafı (3 satır, önceki adımlarla aynı kalıp):
+```csharp
+await kanal.ExchangeDeclareAsync("atolye.olu", ExchangeType.Fanout, durable: true);
+await kanal.QueueDeclareAsync("atolye.olu-kutusu", durable: true, exclusive: false, autoDelete: false);
+await kanal.QueueBindAsync("atolye.olu-kutusu", "atolye.olu", "");
+```
+2. **Argüman sözlüğü** (anahtar → değer):
+```csharp
+var arguman = new Dictionary<string, object?>
+{
+    ["x-dead-letter-exchange"] = "atolye.olu",
+    ["x-message-ttl"] = 2000
+};
+```
+`2000` tırnaksız bir **sayıdır** (milisaniye = 2 saniye). Sonra asıl kuyruğu bu sözlükle aç: `await kanal.QueueDeclareAsync("atolye.is2", durable: true, exclusive: false, autoDelete: false, arguments: arguman);`
+3. İki mesaj (döngü, varsayılan exchange, etiket = kuyruk adı).
+4. Reddet: kuyruk sıralıdır, ilk mesaj `is-1`:
+```csharp
+var ilk = await kanal.BasicGetAsync("atolye.is2", autoAck: false);
+Console.WriteLine($"Reddedildi: {Encoding.UTF8.GetString(ilk!.Body.ToArray())}");
+await kanal.BasicNackAsync(ilk.DeliveryTag, multiple: false, requeue: false);
+```
+(`ilk!` = "boş olmadığını biliyorum".)
+5. `await Task.Delay(3000);` (is-2 için TTL dolsun), sonra `atolye.olu-kutusu` sayısını yazdır.
+
+**Beklenen çıktı:** `Ölü mektup kutusunda: 2 mesaj` (is-1 reddedildiği, is-2 süresi dolduğu için).
+
+§NASIL 05-7
 **Hedef:** consumer sınıfı.
 
 1. Başlık: `public class AiIstegiConsumer : IConsumer<AiIstegi>` — "AiIstegi mesajını tüketen sınıf".
@@ -293,9 +361,9 @@ public class AiIstegiConsumer(ILogger<AiIstegiConsumer> log) : IConsumer<AiIsteg
     }
 }
 ```
-`async` kullandın → içinde en az bir `await` olsun (`await Task.CompletedTask;`). Önceki adımla karşılaştır: orada ack'i **sen** verdin, burada metot hatasız bitince MassTransit verir.
+`async` kullandın → içinde en az bir `await` olsun (`await Task.CompletedTask;`). Önceki adımlarla karşılaştır: orada ack'i **sen** verdin, burada metot hatasız bitince MassTransit verir.
 
-§NASIL 05-7
+§NASIL 05-8
 **Hedef:** üstel retry.
 
 Kalıp: `e.UseMessageRetry(r => r.Exponential(DENEME, MIN, MAX, ARTIŞ));`
